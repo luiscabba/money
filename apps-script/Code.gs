@@ -403,6 +403,7 @@ function dailyClose() {
   const title = 'Daily close: ' + amt;
   const body = spent <= allow ? (streak > 1 ? streak + ' days in a row under ₱' + allow + '.' : 'Under ₱' + allow + ' today.') : '₱' + Math.round(spent - allow).toLocaleString('en-US') + ' over today.';
   push_(title, body, '/');
+  try { investSnapshot_(); } catch (e) { Logger.log('invest snapshot: ' + e); }
 }
 
 // Monday 8am: last week's total against the week before, opens the recap cards.
@@ -475,10 +476,7 @@ function doGet(e) {
   const usdphp = Number(ss.getSheetByName('Net Worth').getRange('H2').getValue()) || null;
   const hist = ss.getSheetByName('Net Worth History');
   const hv = hist.getLastRow() > 1 ? hist.getRange(2, 1, hist.getLastRow() - 1, 8).getValues() : [];
-  const holdingsSheet = ss.getSheetByName('Holdings');
-  const holdings = holdingsSheet && holdingsSheet.getLastRow() > 1
-    ? holdingsSheet.getRange(2, 1, holdingsSheet.getLastRow() - 1, 3).getValues().filter((r) => r[0]).map((r) => ({ symbol: r[0], sleeve: r[1], usd: Number(r[2]) || 0 }))
-    : [];
+  const holdings = holdings_();
   return json_({
     updatedAt: Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ssXXX"),
     allowance: allowance_(),
@@ -490,6 +488,7 @@ function doGet(e) {
       history: hv.filter((r) => r[0]).map((r) => ({ date: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, 'yyyy-MM-dd') : String(r[0]), total: Number(r[6]) || 0 }))
     },
     holdings: holdings,
+    investHistory: investHistory_(),
     owed: owed_(),
     plans: plans_(),
     gaps: gaps_(),
@@ -622,6 +621,8 @@ function applyOps_(ops) {
         const acct = ['Maya', 'GCash', 'GoTyme', 'BPI'].indexOf(o.account) >= 0 ? o.account : '';
         if (!acct || !(Number(o.amount) >= 0)) throw 'need account and amount';
         recordBalance_(acct, Number(o.amount), new Date(), 'told Ask Money');
+      } else if (o.op === 'set_holding') {
+        setHolding_(o);
       } else if (o.op === 'resolve_gap') {
         const r = findRow_('Gaps', o.id);
         if (!r) throw 'unknown gap';
@@ -654,6 +655,7 @@ function ask_(messages) {
     'Monthly budgets: ' + budgets_().map((b) => b.name + ' PHP ' + b.budget + ' (covers ' + b.includes.join(', ') + ')').join('; '),
     'Weekly budget = monthly total x 12 / 52. Safe to spend today = (weekly budget - spent this week before today - planned purchases dated this week) / days left this week including today, minus spent today.',
     'Balances: ' + nw,
+    'Investment holdings (USD; targets Beta 70%, Alpha 20%, Asymmetric 10%): ' + JSON.stringify(holdings_()),
     'Owed to Luis: ' + JSON.stringify(owed_().filter((o) => o.status === 'open')),
     'Planned purchases: ' + JSON.stringify(plans_()),
     'Untracked money (balance did not match tracked transactions; negative amount = spending the app missed): ' + JSON.stringify(gaps_()),
@@ -677,6 +679,7 @@ function ask_(messages) {
     '{"op":"add_plan","what":"...","amount":N,"date":"YYYY-MM-DD"} a purchase he intends to make; it reduces safe to spend for that week',
     '{"op":"remove_plan","id":"<plan id>"}',
     '{"op":"set_balance","account":"Maya|GCash|GoTyme|BPI","amount":N} when he tells you a current balance (for Maya, the wallet balance)',
+    '{"op":"set_holding","symbol":"SPYL|GOOGL|MSFT|ETH|CASH|...","quantity":N,"avgCost":N,"sleeve":"Beta|Alpha|Asymmetric|Cash"} update an investment position; quantity 0 removes it; CASH quantity is dollars',
     '{"op":"resolve_gap","id":"<gap id>"} once he explains untracked money; pair it with add_expense or other actions that account for it',
     'Give every action a short "label" for the card, like "OWD Jupiter → Food & Drinks".',
     'When he says he wants to buy something, say what it does to safe to spend that week and offer add_plan.',
@@ -707,6 +710,63 @@ function extractJson_(txt) {
   tries.push(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
   for (const t of tries) { try { return JSON.parse(t); } catch (e) { /* next */ } }
   return null;
+}
+
+/* ---------- investments: holdings priced by GOOGLEFINANCE, daily snapshot ---------- */
+
+const QUOTES = { SPYL: 'LON:SPYL', GOOGL: 'NASDAQ:GOOGL', MSFT: 'NASDAQ:MSFT', AMZN: 'NASDAQ:AMZN', AAPL: 'NASDAQ:AAPL', NVDA: 'NASDAQ:NVDA', ETH: 'CURRENCY:ETHUSD', BTC: 'CURRENCY:BTCUSD' };
+const HOLD_HEAD = [['Symbol', 'Sleeve', 'Quantity', 'Avg cost (USD)', 'Price (USD)', 'Value (USD)', 'Cost (USD)', 'Gain (USD)', 'Quote']];
+const INV_HEAD = [['Date', 'Value (USD)', 'Cost (USD)', 'USD/PHP']];
+
+function holdings_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Holdings');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues().filter((r) => r[0]).map((r) => ({
+    symbol: String(r[0]), sleeve: String(r[1]), qty: Number(r[2]) || 0, avg: Number(r[3]) || 0,
+    price: Number(r[4]) || 0, usd: Number(r[5]) || 0, cost: Number(r[6]) || 0
+  }));
+}
+
+// Adds or updates one position. Cash uses symbol CASH (quantity = dollars, price 1).
+function setHolding_(o) {
+  const sym = String(o.symbol || '').toUpperCase().trim();
+  if (!sym) throw 'need symbol';
+  const sh = ensureSheet_('Holdings', HOLD_HEAD);
+  let r = findRow_('Holdings', sym);
+  if (!r) { sh.appendRow([sym]); r = sh.getLastRow(); }
+  const sleeve = o.sleeve || (sym === 'SPYL' ? 'Beta' : sym === 'CASH' ? 'Cash' : /^(ETH|BTC)$/.test(sym) ? 'Asymmetric' : 'Alpha');
+  const qty = Number(o.quantity);
+  if (!(qty >= 0)) throw 'need quantity';
+  if (qty === 0) { sh.deleteRow(r); return; }
+  const quote = sym === 'CASH' ? '' : (o.quote || QUOTES[sym] || sym);
+  const avg = sym === 'CASH' ? 1 : Number(o.avgCost) || 0;
+  sh.getRange(r, 1, 1, 4).setValues([[sym, sleeve, qty, avg]]);
+  sh.getRange(r, 9).setValue(quote);
+  sh.getRange(r, 5, 1, 4).setFormulas([[
+    '=IF(I' + r + '="",1,IFERROR(GOOGLEFINANCE(I' + r + '),D' + r + '))', '=C' + r + '*E' + r, '=C' + r + '*D' + r, '=F' + r + '-G' + r
+  ]]);
+}
+
+// Daily: record the portfolio and keep IBKR's net worth line current.
+function investSnapshot_() {
+  const h = holdings_();
+  if (!h.length) return;
+  SpreadsheetApp.flush();
+  const value = h.reduce((a, x) => a + x.usd, 0), cost = h.reduce((a, x) => a + x.cost, 0);
+  const ss = SpreadsheetApp.getActive();
+  const fx = Number(ss.getSheetByName('Net Worth').getRange('H2').getValue()) || '';
+  ensureSheet_('Invest History', INV_HEAD).appendRow([Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), Math.round(value * 100) / 100, Math.round(cost * 100) / 100, fx]);
+  const nw = ss.getSheetByName('Net Worth');
+  const names = nw.getRange('A2:A6').getValues();
+  for (let i = 0; i < names.length; i++) if (names[i][0] === 'IBKR') { nw.getRange(i + 2, 3).setValue(Math.round(value * 100) / 100); nw.getRange(i + 2, 5).setValue(new Date()); }
+}
+
+function investHistory_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Invest History');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues().filter((r) => r[0]).map((r) => ({
+    date: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, 'yyyy-MM-dd') : String(r[0]), value: Number(r[1]) || 0, cost: Number(r[2]) || 0
+  }));
 }
 
 /* ---------- balances from notifications, and the missing-money check ---------- */
