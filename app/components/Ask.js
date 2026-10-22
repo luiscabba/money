@@ -43,13 +43,13 @@ export default function Ask() {
   return (
     <>
       {!open && (
-        <button onClick={() => setOpen(true)} aria-label="Ask Money"
+        <button onClick={() => setOpen(true)} aria-label="Ask Money" className="pop"
           style={{ position: 'fixed', right: 'max(16px, calc(50vw - 244px))', bottom: 'calc(84px + env(safe-area-inset-bottom))', zIndex: 20, minHeight: 44, padding: '0 16px', borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontSize: 14, fontWeight: 800, boxShadow: '0 8px 30px rgba(0,0,0,0.45)', cursor: 'pointer' }}>
           ✦ Ask
         </button>
       )}
       {open && (
-        <div role="dialog" aria-label="Ask Money" style={{ position: 'fixed', inset: 0, zIndex: 30, background: '#0B0D10', display: 'flex', justifyContent: 'center' }}>
+        <div role="dialog" aria-label="Ask Money" className="sheetup" style={{ position: 'fixed', inset: 0, zIndex: 30, background: '#0B0D10', display: 'flex', justifyContent: 'center' }}>
           <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', padding: 'calc(14px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom))', gap: 10 }}>
             <div className="row">
               <div style={{ fontSize: 22, fontWeight: 800 }}>Ask Money</div>
@@ -77,18 +77,18 @@ export default function Ask() {
                         </div>
                       )}
                       {m.state === 'saving' && <div className="small muted">Saving…</div>}
-                      {m.state === 'done' && <div className="small" style={{ color: 'var(--under)', fontWeight: 700 }}>✓ Done</div>}
+                      {m.state === 'done' && <div className="small pop" style={{ color: 'var(--under)', fontWeight: 700, transformOrigin: 'left' }}>✓ Done</div>}
                       {m.state === 'skipped' && <div className="small muted">Skipped</div>}
                     </div>
                   )}
                 </div>
               ))}
-              {busy && <div className="small muted rise">Thinking…</div>}
+              {busy && <div className="typing rise" role="status" aria-label="Thinking"><span /><span /><span /></div>}
               <div ref={end} />
             </div>
             {msgs.length === 0 && (
               <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>
-                {CHIPS.map((c) => <button key={c} className="chip" style={{ flexShrink: 0, fontSize: 12 }} onClick={() => (c === 'I want to buy something' ? setText('I want to buy ') : send(c))}>{c}</button>)}
+                {CHIPS.map((c, k) => <button key={c} className="chip rise" style={{ flexShrink: 0, fontSize: 12, animationDelay: 0.15 + k * 0.05 + 's' }} onClick={() => (c === 'I want to buy something' ? setText('I want to buy ') : send(c))}>{c}</button>)}
               </div>
             )}
             <form onSubmit={(e) => { e.preventDefault(); send(); }} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 6px 6px 16px', borderRadius: 28, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>

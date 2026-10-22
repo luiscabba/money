@@ -5,6 +5,7 @@ import Ring from '../../components/Ring';
 import useData from '../../components/useData';
 import Bills from '../../components/Bills';
 import Owed from '../../components/Owed';
+import Seg from '../../components/Seg';
 import { peso, MONTHS, manilaNow, daysIn, budgetGroups, totalBudget, monthSpent } from '../../lib/money';
 
 export default function Budgets() {
@@ -28,11 +29,7 @@ export default function Budgets() {
         <h1 className="h1">Budgets</h1>
         <div className="small muted">{Math.round(pace * 100)}% of {MONTHS[now.m - 1]} gone</div>
       </div>
-      <div role="group" aria-label="Section" className="glass" style={{ display: 'flex', padding: 3, borderRadius: 22 }}>
-        {[['budgets', 'Budgets'], ['bills', 'Bills'], ['owed', 'Owed']].map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} aria-pressed={tab === k} style={{ flex: 1, minHeight: 38, border: 0, borderRadius: 19, cursor: 'pointer', fontSize: 13, fontWeight: 700, background: tab === k ? 'var(--ink)' : 'transparent', color: tab === k ? 'var(--bg)' : 'var(--ink)' }}>{l}</button>
-        ))}
-      </div>
+      <Seg label="Section" options={[['budgets', 'Budgets'], ['bills', 'Bills'], ['owed', 'Owed']]} value={tab} onChange={setTab} />
       {tab === 'bills' && <Bills data={data} now={now} />}
       {tab === 'owed' && <Owed data={data} />}
       {tab === 'budgets' && <>
@@ -60,7 +57,7 @@ export default function Budgets() {
       </div>
 
       {cur && (
-        <div className="glass card strong" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div key={sel} className="glass card strong rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="row small" style={{ fontWeight: 700 }}>
             <span>{cur.name} · {peso(cur.spent)} / {peso(cur.budget)}</span>
             <span style={{ color: cur.spent > cur.budget ? 'var(--over)' : 'var(--under)' }}>{cur.spent > cur.budget ? peso(cur.spent - cur.budget) + ' over' : peso(cur.budget - cur.spent) + ' left'}</span>

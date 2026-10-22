@@ -3,6 +3,8 @@ import { useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import Ring from '../../components/Ring';
 import useData from '../../components/useData';
+import Seg from '../../components/Seg';
+import CountUp from '../../components/CountUp';
 import { peso, usd } from '../../lib/money';
 
 const SLEEVES = [
@@ -22,21 +24,17 @@ export default function Invest() {
   const totalHold = hold.reduce((a, h) => a + h.usd, 0);
   const actual = (k) => (totalHold ? hold.filter((h) => h.sleeve === k).reduce((a, h) => a + h.usd, 0) / totalHold : null);
   const deposits = (data.transactions || []).filter((t) => /Wise\/IBKR/.test(t.merchant)).reduce((a, t) => a + t.amount, 0);
-  const seg = (on) => ({ minHeight: 40, minWidth: 52, border: 0, borderRadius: 19, cursor: 'pointer', fontSize: 13, fontWeight: 700, background: on ? '#F2F4F8' : 'transparent', color: on ? '#0B0D10' : '#F2F4F8' });
 
   return (
     <Shell glow="d">
       <div className="row">
         <h1 className="h1">Invest</h1>
-        <div role="group" aria-label="Currency" className="glass" style={{ display: 'flex', borderRadius: 22, padding: 3 }}>
-          <button style={seg(inUsd)} aria-pressed={inUsd} onClick={() => setInUsd(true)}>USD</button>
-          <button style={seg(!inUsd)} aria-pressed={!inUsd} onClick={() => setInUsd(false)}>PHP</button>
-        </div>
+        <Seg label="Currency" options={[['usd', 'USD'], ['php', 'PHP']]} value={inUsd ? 'usd' : 'php'} onChange={(k) => setInUsd(k === 'usd')} minWidth={52} />
       </div>
 
       <div className="glass card strong">
         <div className="small muted">IBKR</div>
-        <div style={{ fontSize: 38, fontWeight: 800 }}>{inUsd ? usd(ibkr.balance) : peso(ibkr.php)}</div>
+        <div style={{ fontSize: 38, fontWeight: 800 }}>{inUsd ? <CountUp key="u" value={ibkr.balance} format={usd} /> : <CountUp key="p" value={ibkr.php} format={peso} />}</div>
         <div className="small muted">{inUsd ? peso(ibkr.php) : usd(ibkr.balance)} · as of {ibkr.asOf || '–'}</div>
       </div>
 
@@ -46,7 +44,7 @@ export default function Invest() {
             const a = actual(s.key);
             return (
               <div key={s.key} style={{ position: 'absolute', inset: 0 }}>
-                <Ring size={150} box={150} r={s.r} width={12} pct={a === null ? s.target : a} color={s.color} track={s.color + '2E'} />
+                <Ring size={150} box={150} r={s.r} width={12} delay={SLEEVES.indexOf(s) * 0.15} pct={a === null ? s.target : a} color={s.color} track={s.color + '2E'} />
               </div>
             );
           })}

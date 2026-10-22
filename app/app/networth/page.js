@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
+import CountUp from '../../components/CountUp';
 import { peso, usd, manilaNow, avgMonthlySpend, pad, netExpenses } from '../../lib/money';
 
 const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA' };
@@ -48,12 +49,12 @@ export default function NetWorth() {
         <svg width="240" height="240" viewBox="0 0 240 240" role="img" aria-label={'Net worth ' + peso(total) + ' split by account'}>
           <g transform="rotate(-90 120 120)">
             <circle cx="120" cy="120" r="100" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="26" />
-            {segs.map((s, i) => <circle key={i} cx="120" cy="120" r="100" fill="none" stroke={s.color} strokeWidth="26" strokeDasharray={s.dash} strokeDashoffset={s.off} opacity={s.op} />)}
+            {segs.map((s, i) => <circle key={i} className="ringfill fade" style={{ animationDelay: i * 0.12 + 's' }} cx="120" cy="120" r="100" fill="none" stroke={s.color} strokeWidth="26" strokeDasharray={s.dash} strokeDashoffset={s.off} opacity={s.op} />)}
           </g>
         </svg>
         <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <div className="small muted">{cur ? cur.name : 'Total'}</div>
-          <div style={{ fontSize: 30, fontWeight: 800 }}>{peso(cur ? cur.php : total)}</div>
+          <div style={{ fontSize: 30, fontWeight: 800 }}><CountUp value={cur ? cur.php : total} format={peso} ms={500} /></div>
           <div className="small muted">{cur ? (cur.currency === 'USD' ? usd(cur.balance) : Math.round((cur.php / total) * 100) + '% of total') : 'all accounts'}</div>
         </div>
       </div>

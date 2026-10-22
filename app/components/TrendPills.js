@@ -32,13 +32,13 @@ export default function TrendPills({ data, now }) {
         {pill('month', MONTHS[now.m - 1], m, ' vs ' + m.prevName)}
       </div>
       {t && (
-        <div className="glass card strong" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div key={open} className="glass card strong rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="small muted">{t.note}</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 112 }} role="img" aria-label={'Spend by ' + (open === 'week' ? 'week' : 'month')}>
             {t.bars.map((b, i) => (
               <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 6, height: '100%' }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: b.current ? 'var(--under)' : '#8A93A6' }}>{(b.value / 1000).toFixed(1)}k</div>
-                <div style={{ width: '100%', height: Math.max(4, Math.round((b.value / max) * 76)), borderRadius: 6, background: b.current ? 'var(--under)' : 'rgba(255,255,255,0.22)' }} />
+                <div className="grow" style={{ width: '100%', height: Math.max(4, Math.round((b.value / max) * 76)), borderRadius: 6, background: b.current ? 'var(--under)' : 'rgba(255,255,255,0.22)', transformOrigin: 'bottom', animationName: 'growy', animationDelay: i * 0.04 + 's' }} />
                 <div style={{ fontSize: 10, color: '#8A93A6', whiteSpace: 'nowrap' }}>{b.label}</div>
               </div>
             ))}

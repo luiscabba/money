@@ -33,7 +33,7 @@ export default function Review() {
       </div>
       <div className="small muted">{open === 0 ? 'All sorted. Budgets updated.' : open + ' left. Pick a category.'}</div>
       {items.map((t) => (
-        <div key={t.row} className="glass card strong" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div key={t.row} className="glass card strong" style={{ display: 'flex', flexDirection: 'column', gap: 12, transition: 'opacity 0.3s ease, transform 0.3s ease', opacity: picked[t.row] ? 0.55 : 1, transform: picked[t.row] ? 'scale(0.98)' : 'none' }}>
           <div className="row" style={{ alignItems: 'baseline' }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800 }}>{t.merchant}</div>

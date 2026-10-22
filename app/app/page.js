@@ -7,6 +7,7 @@ import useData from '../components/useData';
 import { enablePush } from '../components/SW';
 import TrendPills from '../components/TrendPills';
 import SafeCard from '../components/SafeCard';
+import CountUp from '../components/CountUp';
 import { peso, MONTHS, WEEKDAYS, manilaNow, daysIn, weekdayOf, allowanceFor, expensesByDay, sum, monthSpent, totalBudget, needsReview } from '../lib/money';
 
 export default function Today() {
@@ -96,14 +97,14 @@ export default function Today() {
         </div>
       </div>
 
-      <div className="glass card strong" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 200 }}>
+      <div key={ym.m + '-' + sel} className="glass card strong rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 200 }}>
         <div className="row" style={{ justifyContent: 'flex-start', gap: 16 }}>
           <Ring size={104} r={50} width={14} pct={s / allow} full={s === 0} color={selColor} label={'Spent ' + peso(s) + ' of ' + peso(allow)}>
             <div className="small muted" style={{ fontWeight: 700 }}>{Math.round((s / allow) * 100)}%</div>
           </Ring>
           <div>
             <div className="small muted">{WEEKDAYS[weekdayOf(ym.y, ym.m, sel)]}, {MONTHS[ym.m - 1].slice(0, 3)} {sel}{isNow && sel === now.d ? ' · today' : ''}</div>
-            <div className="big">{peso(s)}</div>
+            <div className="big"><CountUp value={s} format={peso} ms={450} /></div>
             <div className="small" style={{ color: selColor }}>{over ? peso(s - allow) + ' over' : s === 0 ? 'No spend' : peso(allow - s) + ' under'} · {peso(allow)} a day</div>
           </div>
         </div>

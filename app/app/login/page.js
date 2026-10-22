@@ -7,6 +7,7 @@ export default function Login() {
   const [code, setCode] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shake, setShake] = useState(0);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -15,7 +16,7 @@ export default function Login() {
     const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passcode: code }) });
     setBusy(false);
     if (res.ok) window.location.href = '/';
-    else setErr('Wrong passcode.');
+    else { setErr('Wrong passcode.'); setShake((n) => n + 1); }
   };
 
   return (
@@ -24,7 +25,7 @@ export default function Login() {
         <Ring size={96} r={40} width={12} pct={0.72} color="var(--under)" />
         <h1 className="h1">Money</h1>
         <label htmlFor="code" className="small muted">Passcode</label>
-        <input id="code" className="input" type="password" inputMode="numeric" autoComplete="current-password" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+        <input key={shake} id="code" className={'input' + (shake ? ' shake' : '')} type="password" inputMode="numeric" autoComplete="current-password" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
         {err && <div className="small" style={{ color: 'var(--over)' }}>{err}</div>}
         <button className="btn" disabled={busy || !code}>{busy ? 'Checking…' : 'Open'}</button>
       </form>
