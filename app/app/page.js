@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Shell, { Loading } from '../components/Shell';
 import Ring from '../components/Ring';
@@ -13,6 +13,12 @@ export default function Today() {
   const [ym, setYm] = useState({ y: now.y, m: now.m });
   const [sel, setSel] = useState(now.d);
   const [pushMsg, setPushMsg] = useState('');
+  const [pushNeeded, setPushNeeded] = useState(false);
+  useEffect(() => {
+    let saved = null;
+    try { saved = localStorage.getItem('pushSaved'); } catch (e) {}
+    setPushNeeded(typeof Notification === 'undefined' || Notification.permission !== 'granted' || !saved);
+  }, []);
 
   if (!data) return <Shell><Loading error={error} /></Shell>;
 
@@ -43,6 +49,7 @@ export default function Today() {
   const askPush = async () => {
     const r = await enablePush();
     setPushMsg(r === 'ok' ? 'Notifications on. A test is on its way.' : r);
+    if (r === 'ok') setPushNeeded(false);
   };
 
   return (
@@ -55,7 +62,7 @@ export default function Today() {
         </div>
         <div className="row" style={{ gap: 8 }}>
           {review > 0 && <Link href="/review" className="chip warn">{review} to review</Link>}
-          {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+          {pushNeeded && (
             <button className="iconbtn" onClick={askPush} aria-label="Turn on notifications">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
             </button>
