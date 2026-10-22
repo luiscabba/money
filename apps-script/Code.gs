@@ -511,3 +511,14 @@ function doPost(e) {
   if (body.action === 'test-push') { push_('Test from Money', 'Push is working.', '/'); return json_({ ok: true }); }
   return json_({ error: 'unknown action' });
 }
+
+// Checks the Claude key: logs the HTTP status and a short reply.
+function testClaude() {
+  const key = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: MODEL, max_tokens: 10, messages: [{ role: 'user', content: 'Reply with OK' }] })
+  });
+  Logger.log(res.getResponseCode() + ' ' + res.getContentText().slice(0, 300));
+}
