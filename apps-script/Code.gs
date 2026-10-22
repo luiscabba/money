@@ -319,8 +319,11 @@ function budgets_() {
   return rows.filter((r) => r[0]).map((r) => ({ name: r[0], budget: Number(r[1]) || 0, includes: String(r[2] || r[0]).split(',').map((s) => s.trim()) }));
 }
 
+// Spending on a day, minus refunds that day from merchants already paid.
 function spentOn_(dayStr, rows) {
-  return rows.filter((r) => r.type === 'Expense' && r.date.slice(0, 10) === dayStr).reduce((a, r) => a + r.amount, 0);
+  const exp = rows.filter((r) => r.type === 'Expense' && r.date.slice(0, 10) === dayStr).reduce((a, r) => a + r.amount, 0);
+  const back = rows.filter((r) => r.type === 'Refund' && r.date.slice(0, 10) === dayStr && rows.some((e) => e.type === 'Expense' && e.merchant === r.merchant && e.date <= r.date)).reduce((a, r) => a + r.amount, 0);
+  return exp - back;
 }
 
 function transactions_(months) {

@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
-import { peso, usd, manilaNow, avgMonthlySpend, pad } from '../../lib/money';
+import { peso, usd, manilaNow, avgMonthlySpend, pad, netExpenses } from '../../lib/money';
 
 const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA' };
 
@@ -20,7 +20,7 @@ export default function NetWorth() {
   const prefix = now.y + '-' + pad(now.m) + '-';
   const mtx = data.transactions.filter((t) => t.date.startsWith(prefix));
   const income = mtx.filter((t) => t.type === 'Income').reduce((a, t) => a + t.amount, 0);
-  const spent = mtx.filter((t) => t.type === 'Expense').reduce((a, t) => a + t.amount, 0);
+  const spent = netExpenses(data).filter((t) => t.date.startsWith(prefix)).reduce((a, t) => a + t.amount, 0);
   const kept = income ? Math.round(((income - spent) / income) * 100) : null;
   const hist = data.netWorth.history || [];
   const prev = hist.length > 1 ? hist[hist.length - 2].total : null;

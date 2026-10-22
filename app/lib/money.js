@@ -28,8 +28,8 @@ export function allowanceFor(data, y, m) {
 export function expensesByDay(data, y, m) {
   const prefix = y + '-' + pad(m) + '-';
   const out = {};
-  (data.transactions || []).forEach((t) => {
-    if (t.type !== 'Expense' || !t.date.startsWith(prefix)) return;
+  netExpenses(data).forEach((t) => {
+    if (!t.date.startsWith(prefix)) return;
     const d = Number(t.date.slice(8, 10));
     (out[d] = out[d] || []).push(t);
   });
@@ -38,14 +38,36 @@ export function expensesByDay(data, y, m) {
 
 export const sum = (xs) => xs.reduce((a, t) => a + t.amount, 0);
 
+// Spending with refunds taken off. A refund that matches a purchase (same merchant and
+// amount) cancels it, so both disappear. Any other refund becomes a negative line in the
+// category of the merchant's most recent purchase.
+const netCache = new WeakMap();
+export function netExpenses(data) {
+  if (netCache.has(data)) return netCache.get(data);
+  const all = data.transactions || [];
+  const exp = all.filter((t) => t.type === 'Expense');
+  const cancelled = new Set();
+  const extra = [];
+  all.filter((t) => t.type === 'Refund').forEach((r) => {
+    const same = exp.filter((e) => e.merchant === r.merchant && e.date <= r.date && !cancelled.has(e));
+    const exact = same.filter((e) => Math.abs(e.amount - r.amount) < 0.01).pop();
+    if (exact) { cancelled.add(exact); return; }
+    const last = same.pop();
+    if (last) extra.push({ ...r, type: 'Expense', amount: -r.amount, category: last.category, review: false });
+  });
+  const out = exp.filter((e) => !cancelled.has(e)).concat(extra).sort((a, b) => (a.date < b.date ? -1 : 1));
+  netCache.set(data, out);
+  return out;
+}
+
 export function monthSpent(data, y, m) {
   const prefix = y + '-' + pad(m) + '-';
-  return sum((data.transactions || []).filter((t) => t.type === 'Expense' && t.date.startsWith(prefix)));
+  return sum(netExpenses(data).filter((t) => t.date.startsWith(prefix)));
 }
 
 export function budgetGroups(data, y, m) {
   const prefix = y + '-' + pad(m) + '-';
-  const tx = (data.transactions || []).filter((t) => t.type === 'Expense' && t.date.startsWith(prefix));
+  const tx = netExpenses(data).filter((t) => t.date.startsWith(prefix));
   return (data.budgets || []).map((b) => {
     const items = tx.filter((t) => b.includes.indexOf(t.category) >= 0);
     return { ...b, items, spent: sum(items) };
@@ -59,7 +81,7 @@ export function needsReview(data) {
 export function streakUnder(data, now) {
   const allow = allowanceFor(data, now.y, now.m);
   const byKey = {};
-  (data.transactions || []).forEach((t) => { if (t.type === 'Expense') byKey[t.date.slice(0, 10)] = (byKey[t.date.slice(0, 10)] || 0) + t.amount; });
+  netExpenses(data).forEach((t) => { byKey[t.date.slice(0, 10)] = (byKey[t.date.slice(0, 10)] || 0) + t.amount; });
   let streak = 0;
   const base = new Date(now.y, now.m - 1, now.d);
   for (let k = 0; k < 120; k++) {

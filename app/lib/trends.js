@@ -1,21 +1,13 @@
 // Week-on-week and month-on-month comparisons. Weeks start Monday.
-import { dayKey, daysIn, allowanceFor } from './money';
+import { dayKey, daysIn, allowanceFor, netExpenses } from './money';
 
 const DAY = 86400000;
 const keyOf = (dt) => dayKey(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
 const SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const label = (dt) => SHORT[dt.getMonth()] + ' ' + dt.getDate();
 
-// Expenses, with refunds netted against the purchase they reverse (same merchant and amount).
 function expenses(data) {
-  const all = data.transactions || [];
-  const out = all.filter((t) => t.type === 'Expense');
-  const used = new Set();
-  all.filter((t) => t.type === 'Refund').forEach((r) => {
-    const hit = out.find((e) => e.amount > 0 && !used.has(e) && e.merchant === r.merchant && Math.abs(e.amount - r.amount) < 0.01 && e.date <= r.date);
-    if (hit) { used.add(hit); out.push({ ...r, amount: -r.amount, category: hit.category }); }
-  });
-  return out;
+  return netExpenses(data);
 }
 
 function byDay(data) {
