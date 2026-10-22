@@ -1,0 +1,56 @@
+:root {
+  --bg: #0B0D10;
+  --ink: #F2F4F8;
+  --muted: #B4BAC6;
+  --dim: #5C6370;
+  --under: #3DDC97;
+  --over: #FF8A3D;
+  --ahead: #FFD166;
+  --glass: rgba(255, 255, 255, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.11);
+  --line: rgba(255, 255, 255, 0.16);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: Manrope, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+a { color: inherit; }
+
+.shell { position: relative; min-height: 100dvh; max-width: 520px; margin: 0 auto; overflow: hidden; display: flex; flex-direction: column; }
+.blob { position: absolute; border-radius: 50%; pointer-events: none; }
+.b1 { left: -100px; top: 80px; width: 320px; height: 320px; background: #2B4BB8; filter: blur(90px); opacity: 0.55; }
+.b2 { right: -110px; top: 360px; width: 300px; height: 300px; background: #1E8A5C; filter: blur(90px); opacity: 0.45; }
+.b3 { left: 60px; bottom: -60px; width: 300px; height: 260px; background: #B8521E; filter: blur(100px); opacity: 0.4; }
+.glow-b .b1 { background: #1E8A5C; top: 200px; }
+.glow-b .b2 { background: #B8521E; top: 40px; }
+.glow-c .b2 { background: #B8521E; }
+.glow-d .b1 { left: auto; right: -100px; top: 60px; background: #B8521E; }
+.glow-d .b2 { right: auto; left: -120px; top: 380px; background: #2B4BB8; }
+
+.page { position: relative; flex: 1; padding: calc(18px + env(safe-area-inset-top)) 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+.tabs { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); margin: 0 16px calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 4px; padding: 6px; border-radius: 28px; z-index: 5; }
+.tab { flex: 1; min-height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 22px; text-decoration: none; font-size: 13px; font-weight: 700; }
+.tab.on { background: var(--ink); color: var(--bg); }
+
+.glass { background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); }
+.card { border-radius: 24px; padding: 16px; }
+.strong { background: var(--glass-strong); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.muted { color: var(--muted); }
+.h1 { font-size: 26px; font-weight: 800; margin: 0; }
+.big { font-size: 32px; font-weight: 800; line-height: 1.1; }
+.small { font-size: 13px; }
+.grid7 { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.chip { min-height: 40px; padding: 0 14px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; text-decoration: none; border: 1px solid var(--line); background: var(--glass); cursor: pointer; }
+.chip.warn { background: rgba(255,138,61,0.18); border-color: rgba(255,138,61,0.5); color: #FFB27D; }
+.chip.on { background: var(--under); border-color: var(--under); color: var(--bg); }
+.iconbtn { width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line); background: var(--glass); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; font-size: 18px; }
+.day { display: flex; flex-direction: column; align-items: center; min-height: 50px; padding: 1px 0; border-radius: 14px; border: 0; background: transparent; cursor: pointer; }
+.day[disabled] { cursor: default; }
+.day.sel { background: rgba(255,255,255,0.16); }
+.day span { font-size: 10px; font-weight: 700; color: var(--muted); }
+.day[disabled] span { color: var(--dim); }
+.list { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.btn { min-height: 52px; border-radius: 26px; border: 0; background: var(--ink); color: var(--bg); font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; text-decoration: none; cursor: pointer; width: 100%; }
+.input { min-height: 52px; border-radius: 16px; border: 1px solid var(--line); background: var(--glass); padding: 0 16px; font-size: 18px; width: 100%; }
+:focus-visible { outline: 2px solid var(--under); outline-offset: 2px; }
