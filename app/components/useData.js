@@ -26,7 +26,8 @@ export default function useData() {
     const id = setInterval(load, 60000);
     const onFocus = () => { if (document.visibilityState === 'visible') load(); };
     document.addEventListener('visibilitychange', onFocus);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onFocus); };
+    window.addEventListener('money:reload', load);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onFocus); window.removeEventListener('money:reload', load); };
   }, [load]);
 
   return { data, error, reload: load };

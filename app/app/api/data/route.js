@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const data = await sheetGet({ months: 6 });
+    const data = await sheetGet({ months: 13 });
     if (data.error) return NextResponse.json(data, { status: 502 });
     return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {

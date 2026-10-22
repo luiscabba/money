@@ -6,6 +6,7 @@ import Ring from '../components/Ring';
 import useData from '../components/useData';
 import { enablePush } from '../components/SW';
 import TrendPills from '../components/TrendPills';
+import SafeCard from '../components/SafeCard';
 import { peso, MONTHS, WEEKDAYS, manilaNow, daysIn, weekdayOf, allowanceFor, expensesByDay, sum, monthSpent, totalBudget, needsReview } from '../lib/money';
 
 export default function Today() {
@@ -72,6 +73,7 @@ export default function Today() {
       </div>
       {pushMsg && <div className="small" style={{ color: 'var(--under)' }}>{pushMsg}</div>}
       <div className="small muted">{under} of {lastDay} days under · {peso(spentMonth)} of {peso(totalBudget(data))}</div>
+      {isNow && <SafeCard data={data} now={now} />}
       {isNow && <TrendPills data={data} now={now} />}
 
       <div className="glass card" style={{ padding: '12px 8px', borderRadius: 26 }}>
@@ -86,7 +88,7 @@ export default function Today() {
             const ds = sum(byDay[d] || []);
             return (
               <button key={d} className={'day' + (d === sel ? ' sel' : '')} disabled={future} onClick={() => setSel(d)} aria-label={MONTHS[ym.m - 1] + ' ' + d + (future ? '' : ', ' + peso(ds))}>
-                <Ring size={34} pct={ds / allow} full={!future && ds === 0} color={ds > allow ? 'var(--over)' : 'var(--under)'} track={future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)'} />
+                <Ring size={34} delay={d * 0.025} pct={ds / allow} full={!future && ds === 0} color={ds > allow ? 'var(--over)' : 'var(--under)'} track={future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)'} />
                 <span>{d}</span>
               </button>
             );

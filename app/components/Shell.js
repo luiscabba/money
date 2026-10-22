@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Ask from './Ask';
 
 const TABS = [['/', 'Today'], ['/trends', 'Trends'], ['/budgets', 'Budgets'], ['/networth', 'Worth'], ['/invest', 'Invest']];
 
@@ -19,6 +20,7 @@ export default function Shell({ children, glow = 'a', tabs = true }) {
           ))}
         </nav>
       )}
+      {tabs && <Ask />}
     </div>
   );
 }
