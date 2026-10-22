@@ -809,3 +809,15 @@ function testClaude() {
 function testAsk() {
   Logger.log(JSON.stringify(ask_([{ role: 'user', content: 'Clear my review list: OWD Jupiter was food, Forbestown was a 7-Eleven. Also I want to buy AirPods for 8990 on Monday.' }])));
 }
+
+// Sends one test notification and logs what the push service said.
+function testPush() {
+  const p = PropertiesService.getScriptProperties();
+  const subs = SpreadsheetApp.getActive().getSheetByName('Devices').getDataRange().getValues().slice(1).filter((r) => r[1]).map((r) => JSON.parse(r[1]));
+  const res = UrlFetchApp.fetch(p.getProperty('APP_URL') + '/api/push', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + p.getProperty('APP_TOKEN') },
+    payload: JSON.stringify({ title: 'Test from Money', body: 'Notifications are working.', url: '/', subscriptions: subs })
+  });
+  Logger.log(res.getResponseCode() + ' ' + res.getContentText().slice(0, 500));
+}
