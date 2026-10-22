@@ -41,7 +41,7 @@ export default function Recap() {
 
   return (
     <div style={{ position: 'relative', minHeight: '100dvh', overflow: 'hidden', background: c.bg, transition: 'background-color 0.6s ease' }}>
-      <div aria-hidden="true" style={{ position: 'absolute', left: -80, top: 120, width: 380, height: 380, borderRadius: 190, background: c.glow, filter: 'blur(110px)', opacity: 0.7 }} />
+      <div aria-hidden="true" style={{ position: 'absolute', left: -240, top: -40, width: 700, height: 700, borderRadius: 350, background: `radial-gradient(closest-side, ${c.glow}, transparent)`, opacity: 0.8, pointerEvents: 'none' }} />
       <button onClick={() => (last ? (window.location.href = '/') : setI(i + 1))} aria-label={last ? 'Done' : 'Next card'}
         style={{ position: 'relative', display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 520, margin: '0 auto', minHeight: '100dvh', padding: 'calc(16px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom))', border: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
         <div style={{ display: 'flex', gap: 4, width: '100%' }}>

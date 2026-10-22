@@ -17,15 +17,16 @@ button, input { font: inherit; color: inherit; }
 a { color: inherit; }
 
 .shell { position: relative; min-height: 100dvh; max-width: 520px; margin: 0 auto; overflow: hidden; display: flex; flex-direction: column; }
-.blob { position: absolute; border-radius: 50%; pointer-events: none; }
-.b1 { left: -100px; top: 80px; width: 320px; height: 320px; background: #2B4BB8; filter: blur(90px); opacity: 0.55; }
-.b2 { right: -110px; top: 360px; width: 300px; height: 300px; background: #1E8A5C; filter: blur(90px); opacity: 0.45; }
-.b3 { left: 60px; bottom: -60px; width: 300px; height: 260px; background: #B8521E; filter: blur(100px); opacity: 0.4; }
-.glow-b .b1 { background: #1E8A5C; top: 200px; }
-.glow-b .b2 { background: #B8521E; top: 40px; }
-.glow-c .b2 { background: #B8521E; }
-.glow-d .b1 { left: auto; right: -100px; top: 60px; background: #B8521E; }
-.glow-d .b2 { right: auto; left: -120px; top: 380px; background: #2B4BB8; }
+.blob { position: absolute; border-radius: 50%; pointer-events: none; background: radial-gradient(closest-side, var(--c), transparent); }
+/* Soft glows drawn as gradients, not blur filters: iOS Safari paints dark boxes behind animated layers over blurred ones. */
+.b1 { --c: #2B4BB8; left: -260px; top: -80px; width: 640px; height: 640px; opacity: 0.6; }
+.b2 { --c: #1E8A5C; right: -270px; top: 200px; width: 620px; height: 620px; opacity: 0.5; }
+.b3 { --c: #B8521E; left: -100px; bottom: -220px; width: 620px; height: 580px; opacity: 0.45; }
+.glow-b .b1 { --c: #1E8A5C; top: 40px; }
+.glow-b .b2 { --c: #B8521E; top: -120px; }
+.glow-c .b2 { --c: #B8521E; }
+.glow-d .b1 { --c: #B8521E; left: auto; right: -260px; top: -100px; }
+.glow-d .b2 { --c: #2B4BB8; right: auto; left: -280px; top: 220px; }
 
 .page { position: relative; flex: 1; padding: calc(18px + env(safe-area-inset-top)) 16px 64px; display: flex; flex-direction: column; gap: 12px; }
 .tabs { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom)); margin: 0 16px calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 0; padding: 6px; border-radius: 28px; z-index: 5; }
