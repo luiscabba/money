@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sheetPost } from '../../../lib/sheet';
 
-const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan'];
+const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap'];
 
 export async function POST(req) {
   const { ops } = await req.json();

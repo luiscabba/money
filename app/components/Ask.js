@@ -13,6 +13,11 @@ export default function Ask() {
   const end = useRef(null);
 
   useEffect(() => { try { const s = sessionStorage.getItem(KEY); if (s) setMsgs(JSON.parse(s)); } catch (e) {} }, []);
+  useEffect(() => {
+    const onAsk = (e) => { setOpen(true); setText(String(e.detail || '')); };
+    window.addEventListener('money:ask', onAsk);
+    return () => window.removeEventListener('money:ask', onAsk);
+  }, []);
   useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify(msgs.slice(-30))); } catch (e) {} if (end.current) end.current.scrollIntoView({ block: 'end' }); }, [msgs, open]);
 
   const send = async (q) => {
@@ -22,8 +27,31 @@ export default function Ask() {
     setMsgs(next); setText(''); setBusy(true);
     try {
       const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: next.map((m) => ({ role: m.role, content: m.content })) }) });
-      const j = await res.json();
-      setMsgs([...next, { role: 'assistant', content: j.reply || j.error || 'No answer.', actions: j.actions || [], state: (j.actions || []).length ? 'pending' : null }]);
+      if ((res.headers.get('content-type') || '').includes('ndjson') && res.body) {
+        // Streamed reply: text arrives in pieces, actions at the end.
+        let reply = '', actions = [];
+        const show = (state) => setMsgs([...next, { role: 'assistant', content: reply, actions, state }]);
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i;
+          while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i); buf = buf.slice(i + 1);
+            if (!line.trim()) continue;
+            const ev = JSON.parse(line);
+            if (ev.d) { reply += ev.d; setBusy(false); show(null); }
+            if (ev.actions) actions = ev.actions;
+          }
+        }
+        show(actions.length ? 'pending' : null);
+      } else {
+        const j = await res.json();
+        setMsgs([...next, { role: 'assistant', content: j.reply || j.error || 'No answer.', actions: j.actions || [], state: (j.actions || []).length ? 'pending' : null }]);
+      }
     } catch (e) {
       setMsgs([...next, { role: 'assistant', content: 'Could not reach Money. Try again.' }]);
     }

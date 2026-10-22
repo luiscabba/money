@@ -125,7 +125,11 @@ function handleMessage_(m) {
   if (!tx && !hasOtp) tx = parseWithClaude_(bank, app, text);
   // An email holding a code is binned once its transfer (if any) is read.
   if (hasOtp) m.moveToTrash();
-  if (!tx || !tx.amount) return hasOtp ? 'otp trashed' : 'not a transaction';
+  const bal = balanceIn_(text);
+  if (!tx || !tx.amount) {
+    if (bal !== null) recordBalance_(ACCOUNT_OF[bank], bal, when, 'notification');
+    return hasOtp ? 'otp trashed' : bal !== null ? 'balance' : 'not a transaction';
+  }
 
   tx.date = when;
   tx.merchant = cleanMerchant_(tx.merchant || '');
@@ -134,9 +138,17 @@ function handleMessage_(m) {
     tx.merchant = 'Own account (' + own + ')';
     if (tx.type === 'Expense') tx.type = 'Transfer Out';
   }
+  // QR Ph payments look like transfers but are almost always a shop: count as spending, ask to confirm.
+  if (!own && tx.type === 'Transfer Out' && /QR ?Ph|QRPH|scan(ned)? to pay|via QR/i.test(text)) {
+    tx.type = 'Expense';
+    tx.category = '';
+    tx.review = true;
+    if (/^account ending/i.test(tx.merchant)) tx.merchant = 'QR Ph payment (' + tx.merchant.replace(/^account /i, '') + ')';
+  }
   if (!tx.category) tx.category = TYPE_CAT[tx.type] || categorize_(tx.merchant, text);
   if (isDuplicate_(tx)) return 'duplicate';
   appendRow_(tx);
+  if (bal !== null) recordBalance_(ACCOUNT_OF[bank], bal, when, 'notification');
   return tx;
 }
 
@@ -480,6 +492,7 @@ function doGet(e) {
     holdings: holdings,
     owed: owed_(),
     plans: plans_(),
+    gaps: gaps_(),
     categories: CATEGORIES
   });
 }
@@ -605,6 +618,14 @@ function applyOps_(ops) {
         const amt = Number(o.amount);
         if (!(amt > 0) || !o.what) throw 'need what and amount';
         ensureSheet_('Plans', PLAN_HEAD).appendRow([newId_(), String(o.what).slice(0, 60), amt, String(o.date || Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd')), 'planned', new Date()]);
+      } else if (o.op === 'set_balance') {
+        const acct = ['Maya', 'GCash', 'GoTyme', 'BPI'].indexOf(o.account) >= 0 ? o.account : '';
+        if (!acct || !(Number(o.amount) >= 0)) throw 'need account and amount';
+        recordBalance_(acct, Number(o.amount), new Date(), 'told Ask Money');
+      } else if (o.op === 'resolve_gap') {
+        const r = findRow_('Gaps', o.id);
+        if (!r) throw 'unknown gap';
+        ss.getSheetByName('Gaps').getRange(r, 7).setValue('resolved');
       } else if (o.op === 'remove_plan') {
         const r = findRow_('Plans', o.id);
         if (!r) throw 'unknown plan';
@@ -635,6 +656,7 @@ function ask_(messages) {
     'Balances: ' + nw,
     'Owed to Luis: ' + JSON.stringify(owed_().filter((o) => o.status === 'open')),
     'Planned purchases: ' + JSON.stringify(plans_()),
+    'Untracked money (balance did not match tracked transactions; negative amount = spending the app missed): ' + JSON.stringify(gaps_()),
     'Categories: ' + CATEGORIES.join(', '),
     'Refunds cancel the matching purchase (same merchant and amount).',
     'Transactions, last 3 months (row | date | type | amount PHP | merchant | category | source | flag):',
@@ -654,6 +676,8 @@ function ask_(messages) {
     '{"op":"settle_owed","id":"<IOU id>","row":N optional (the incoming payment that repaid it)}',
     '{"op":"add_plan","what":"...","amount":N,"date":"YYYY-MM-DD"} a purchase he intends to make; it reduces safe to spend for that week',
     '{"op":"remove_plan","id":"<plan id>"}',
+    '{"op":"set_balance","account":"Maya|GCash|GoTyme|BPI","amount":N} when he tells you a current balance (for Maya, the wallet balance)',
+    '{"op":"resolve_gap","id":"<gap id>"} once he explains untracked money; pair it with add_expense or other actions that account for it',
     'Give every action a short "label" for the card, like "OWD Jupiter → Food & Drinks".',
     'When he says he wants to buy something, say what it does to safe to spend that week and offer add_plan.',
     'Output only one JSON object, starting with { and ending with }, no prose or code fence around it: {"reply":"...","actions":[...]}'
@@ -683,6 +707,91 @@ function extractJson_(txt) {
   tries.push(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
   for (const t of tries) { try { return JSON.parse(t); } catch (e) { /* next */ } }
   return null;
+}
+
+/* ---------- balances from notifications, and the missing-money check ---------- */
+
+const BAL_HEAD = [['Time', 'Account', 'Balance', 'Note']];
+const GAP_HEAD = [['ID', 'Found', 'Account', 'Amount', 'From', 'To', 'Status']];
+const GAP_MIN = 500;
+const ACCOUNT_OF = { Maya: 'Maya', GCash: 'GCash', GoTyme: 'GoTyme', BPI: 'BPI' };
+
+function balanceIn_(text) {
+  const m = text.match(/(?:new|available|remaining|current|wallet)?\s*bal(?:ance)?\.?\s*(?:is|of|:)?\s*(?:now\s*)?(?:PHP|P|₱)\s?([\d,]+\.\d{2})/i);
+  return m ? parseFloat(m[1].replace(/,/g, '')) : null;
+}
+
+function sourceAccount_(source) {
+  const s = String(source || '');
+  if (/^Maya/i.test(s)) return 'Maya';
+  if (/^GCash/i.test(s)) return 'GCash';
+  if (/^GoTyme/i.test(s)) return 'GoTyme';
+  if (/^BPI/i.test(s)) return 'BPI';
+  return '';
+}
+
+// Net tracked movement for one account between two moments (after `from`, up to and including `to`).
+function trackedFlow_(account, from, to) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Transactions');
+  const last = sh.getLastRow();
+  if (last < 2) return 0;
+  const n = Math.min(400, last - 1);
+  const rows = sh.getRange(last - n + 1, 1, n, 6).getValues();
+  let flow = 0;
+  rows.forEach((r) => {
+    const d = r[0] instanceof Date ? r[0] : new Date(String(r[0]).replace(' ', 'T') + '+08:00');
+    if (isNaN(d) || d <= from || d > to || sourceAccount_(r[5]) !== account) return;
+    const amt = Number(r[2]) || 0;
+    if (/^(Income|Transfer In|Refund)$/.test(r[1])) flow += amt;
+    else if (/^(Expense|Transfer Out|Cash Withdrawal)$/.test(r[1])) flow -= amt;
+  });
+  return flow;
+}
+
+// Records a balance and checks it against the last one. Returns the gap row added, if any.
+function recordBalance_(account, balance, when, note) {
+  if (!account || !(balance >= 0)) return null;
+  const sh = ensureSheet_('Balances', BAL_HEAD);
+  const prev = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues().filter((r) => r[1] === account).pop() : null;
+  sh.appendRow([when, account, balance, note || '']);
+  updateNetWorth_(account, balance, prev ? Number(prev[2]) : null, when);
+  if (!prev) return null;
+  const from = prev[0] instanceof Date ? prev[0] : new Date(prev[0]);
+  const expected = Number(prev[2]) + trackedFlow_(account, from, when);
+  const gap = Math.round((balance - expected) * 100) / 100;
+  if (Math.abs(gap) < GAP_MIN) return null;
+  const id = newId_();
+  ensureSheet_('Gaps', GAP_HEAD).appendRow([id, new Date(), account, gap, from, when, 'open']);
+  const amt = '₱' + Math.round(Math.abs(gap)).toLocaleString('en-US');
+  push_(account + ': ' + amt + (gap < 0 ? ' not tracked' : ' extra'),
+    (gap < 0 ? 'Money left ' : 'Money came into ') + account + ' that the app didn\'t see. Tell Ask Money what it was.', '/');
+  return id;
+}
+
+// Maya's notification shows the wallet only, so Maya's net worth moves by the change; the others are the whole account.
+function updateNetWorth_(account, balance, prevBalance, when) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Net Worth');
+  const rows = sh.getRange('A2:A6').getValues();
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i][0] !== account) continue;
+    const r = i + 2;
+    if (account === 'Maya') {
+      if (prevBalance === null) return;
+      sh.getRange(r, 3).setValue(Math.round((Number(sh.getRange(r, 3).getValue()) + balance - prevBalance) * 100) / 100);
+    } else {
+      sh.getRange(r, 3).setValue(balance);
+    }
+    sh.getRange(r, 5).setValue(when);
+    return;
+  }
+}
+
+function gaps_() {
+  const sh = ensureSheet_('Gaps', GAP_HEAD);
+  if (sh.getLastRow() < 2) return [];
+  const f = (d) => (d instanceof Date ? Utilities.formatDate(d, TZ, 'yyyy-MM-dd HH:mm') : String(d));
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues().filter((r) => r[0] && r[6] === 'open')
+    .map((r) => ({ id: String(r[0]), account: r[2], amount: Number(r[3]), from: f(r[4]), to: f(r[5]) }));
 }
 
 // Checks the Claude key: logs the HTTP status and a short reply.
