@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const TABS = [['/', 'Today'], ['/budgets', 'Budgets'], ['/networth', 'Net Worth'], ['/invest', 'Invest']];
+const TABS = [['/', 'Today'], ['/trends', 'Trends'], ['/budgets', 'Budgets'], ['/networth', 'Worth'], ['/invest', 'Invest']];
 
 export default function Shell({ children, glow = 'a', tabs = true }) {
   const path = usePathname();

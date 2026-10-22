@@ -60,7 +60,7 @@ export function weekTrend(data, now) {
     const b = k === 0 ? today : new Date(a.getTime() + 6 * DAY);
     bars.push({ label: k === 0 ? 'Now' : label(a), value: sumRange(a, b), current: k === 0 });
   }
-  return { cur, prev, pct: pct(cur, prev), bars, movers: movers(data, mon, today, pMon, pSame), note: 'Mon to ' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][elapsed] + ', same days last week' };
+  return { cur, prev, pct: pct(cur, prev), bars, movers: movers(data, mon, today, pMon, pSame, 5), note: 'Mon to ' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][elapsed] + ', same days last week' };
 }
 
 export function monthTrend(data, now) {
@@ -74,7 +74,7 @@ export function monthTrend(data, now) {
     const e = k === 0 ? b : new Date(s.getFullYear(), s.getMonth(), daysIn(s.getFullYear(), s.getMonth() + 1));
     bars.push({ label: SHORT[s.getMonth()], value: total(between(data, s, e)), current: k === 0 });
   }
-  return { cur, prev, pct: pct(cur, prev), bars, movers: movers(data, a, b, pa, pb), prevName: SHORT[pa.getMonth()], note: 'Day ' + now.d + ' compared with day ' + pb.getDate() + ' of ' + SHORT[pa.getMonth()] };
+  return { cur, prev, pct: pct(cur, prev), bars, movers: movers(data, a, b, pa, pb, 5), prevName: SHORT[pa.getMonth()], note: 'Day ' + now.d + ' compared with day ' + pb.getDate() + ' of ' + SHORT[pa.getMonth()] };
 }
 
 // Last full week (Mon to Sun) against the week before it.
@@ -103,4 +103,19 @@ export function weekRecap(data, now) {
     top = Object.entries(by).sort((x, y) => y[1] - x[1]).slice(0, 3);
   }
   return { range: label(a) + ' to ' + label(b), cur, prev, pct: pct(cur, prev), ratio: prev ? cur / prev : null, week, under, zero, up, top, month: monthTrend(data, now) };
+}
+
+// Running totals day by day: this period so far against all of the previous one.
+export function paceLines(data, now, mode) {
+  const days = byDay(data);
+  const run = (start, n) => { let s = 0; const out = []; for (let k = 0; k < n; k++) { s += days[keyOf(new Date(start.getTime() + k * DAY))] || 0; out.push(s); } return out; };
+  const today = new Date(now.y, now.m - 1, now.d);
+  if (mode === 'week') {
+    const mon = mondayOf(today);
+    const elapsed = Math.round((today - mon) / DAY) + 1;
+    return { now: run(mon, elapsed), prev: run(new Date(mon.getTime() - 7 * DAY), 7), ticks: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => [i, l]) };
+  }
+  const pStart = new Date(now.y, now.m - 2, 1);
+  const pn = daysIn(pStart.getFullYear(), pStart.getMonth() + 1);
+  return { now: run(new Date(now.y, now.m - 1, 1), now.d), prev: run(pStart, pn), ticks: [[0, '1'], [9, '10'], [19, '20'], [pn - 1, String(pn)]] };
 }

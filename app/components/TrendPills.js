@@ -44,7 +44,7 @@ export default function TrendPills({ data, now }) {
             ))}
           </div>
           {t.movers.length > 0 && <div style={{ height: 1, background: 'var(--line)' }} />}
-          {t.movers.map((x) => (
+          {t.movers.slice(0, 3).map((x) => (
             <div key={x.name} className="row" style={{ fontSize: 14 }}>
               <span>{x.name}</span>
               <span style={{ display: 'flex', gap: 10 }}><span className="muted">{peso(x.cur)}</span><span style={{ minWidth: 62, textAlign: 'right', fontWeight: 700 }}><Delta p={x.pct} /></span></span>
