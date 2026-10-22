@@ -51,6 +51,7 @@ function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(1).create();
   ScriptApp.newTrigger('dailyClose').timeBased().atHour(22).nearMinute(39).everyDays(1).inTimezone(TZ).create();
+  setupRecap();
   Logger.log('Setup done.');
 }
 
@@ -387,6 +388,34 @@ function dailyClose() {
   const title = 'Daily close: ' + amt;
   const body = spent <= allow ? (streak > 1 ? streak + ' days in a row under ₱' + allow + '.' : 'Under ₱' + allow + ' today.') : '₱' + Math.round(spent - allow).toLocaleString('en-US') + ' over today.';
   push_(title, body, '/');
+}
+
+// Monday 8am: last week's total against the week before, opens the recap cards.
+function setupRecap() {
+  ScriptApp.getProjectTriggers().filter((t) => t.getHandlerFunction() === 'weeklyRecap').forEach((t) => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('weeklyRecap').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(8).inTimezone(TZ).create();
+}
+
+function weeklyRecap() {
+  const rows = transactions_(2);
+  const day = (k) => Utilities.formatDate(new Date(Date.now() - k * 86400000), TZ, 'yyyy-MM-dd');
+  const dow = Number(Utilities.formatDate(new Date(), TZ, 'u')); // 1 = Monday
+  const back = dow - 1; // days since this Monday
+  const span = (from, to) => {
+    const keys = [];
+    for (let k = from; k >= to; k--) keys.push(day(k));
+    const exp = rows.filter((r) => r.type === 'Expense' && keys.indexOf(r.date.slice(0, 10)) >= 0);
+    const ref = rows.filter((r) => r.type === 'Refund' && keys.indexOf(r.date.slice(0, 10)) >= 0);
+    return exp.reduce((a, r) => a + r.amount, 0) - ref.filter((r) => exp.some((e) => e.merchant === r.merchant && Math.abs(e.amount - r.amount) < 0.01)).reduce((a, r) => a + r.amount, 0);
+  };
+  const cur = span(back + 7, back + 1), prev = span(back + 14, back + 8);
+  const amt = '₱' + Math.round(cur).toLocaleString('en-US');
+  let body = 'Tap for your recap.';
+  if (prev > 0) {
+    const p = Math.round((cur - prev) / prev * 100);
+    body = (p > 0 ? '▲ ' : p < 0 ? '▼ ' : '') + Math.abs(p) + '% vs the week before. Tap for your recap.';
+  }
+  push_('Last week: ' + amt, body, '/recap');
 }
 
 function push_(title, body, url) {

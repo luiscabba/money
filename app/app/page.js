@@ -5,6 +5,7 @@ import Shell, { Loading } from '../components/Shell';
 import Ring from '../components/Ring';
 import useData from '../components/useData';
 import { enablePush } from '../components/SW';
+import TrendPills from '../components/TrendPills';
 import { peso, MONTHS, WEEKDAYS, manilaNow, daysIn, weekdayOf, allowanceFor, expensesByDay, sum, monthSpent, totalBudget, needsReview } from '../lib/money';
 
 export default function Today() {
@@ -71,6 +72,7 @@ export default function Today() {
       </div>
       {pushMsg && <div className="small" style={{ color: 'var(--under)' }}>{pushMsg}</div>}
       <div className="small muted">{under} of {lastDay} days under · {peso(spentMonth)} of {peso(totalBudget(data))}</div>
+      {isNow && <TrendPills data={data} now={now} />}
 
       <div className="glass card" style={{ padding: '12px 8px', borderRadius: 26 }}>
         <div className="grid7 small muted" style={{ textAlign: 'center', fontWeight: 700, fontSize: 11, marginBottom: 4 }}>
