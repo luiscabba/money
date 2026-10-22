@@ -38,5 +38,15 @@ export default function Shell({ children, glow = 'a', tabs = true }) {
 }
 
 export function Loading({ error }) {
-  return <div className="muted" style={{ padding: '40px 4px' }}>{error ? 'Could not reach the sheet (' + error + '). Pull to retry.' : 'Loading…'}</div>;
+  if (error) return <div className="muted" style={{ padding: '40px 4px' }}>Could not reach the sheet ({error}). Pull to retry.</div>;
+  return (
+    <div role="status" aria-label="Loading" style={{ flex: 1, minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg className="loader" width="84" height="84" viewBox="0 0 84 84" aria-hidden="true">
+        <circle cx="42" cy="42" r="34" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
+        <circle className="loader-a" cx="42" cy="42" r="34" fill="none" stroke="var(--under)" strokeWidth="10" strokeLinecap="round" pathLength="100" />
+        <circle cx="42" cy="42" r="20" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" />
+        <circle className="loader-b" cx="42" cy="42" r="20" fill="none" stroke="#4D7CFF" strokeWidth="8" strokeLinecap="round" pathLength="100" />
+      </svg>
+    </div>
+  );
 }
