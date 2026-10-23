@@ -32,7 +32,7 @@ export async function GET(req) {
 
   let mood = 'content', line = peso(Math.max(0, limit - spent)) + ' left today.';
   if (spent > limit) { mood = 'worry'; line = peso(spent - limit) + ' over today.'; }
-  if (top && mood === 'content') line += ' ' + top.name + (top.status === 'overcap' || top.status === 'waiting' ? ' is waiting.' : ' on track.');
+  if (top && mood === 'content' && top.dated) line += ' ' + top.name + (top.status === 'ontrack' ? ' on track.' : top.status === 'waiting' ? ' is waiting.' : ' pushed to ' + month((top.eta || '').slice(0, 7)) + '.');
   if (matched) { mood = 'surp'; line = 'Is ' + peso(matched.amount) + ' at ' + matched.merchant + ' for a goal?'; }
   if (funded) { mood = 'cel'; line = funded.name + ' fully saved.'; }
   if (hour >= 23 || hour < 6) { mood = 'sleep'; line = 'Day closed at ' + peso(spent) + '.' + (spent <= limit ? ' Under again.' : ''); }
