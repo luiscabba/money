@@ -11,8 +11,8 @@ const TX_COLS = ['ts', 'type', 'amount', 'merchant', 'category', 'source', 'ref'
 const RESTORE = {
   transactions: ['n', TX_COLS],
   budgets: ['name', ['monthly']],
-  owed: ['id', ['status', 'settled_at', 'match_row']],
-  plans: ['id', ['status']],
+  owed: ['id', ['status', 'settled_at', 'match_row', 'who', 'amount', 'purpose']],
+  plans: ['id', ['status', 'what', 'amount', 'due']],
   gaps: ['id', ['status']],
   notes: ['id', ['note']],
   goals: ['id', ['name', 'price', 'target_date', 'priority', 'status', 'closed_at', 'bought_row']],
@@ -175,6 +175,8 @@ async function one(o, ctx = {}) {
     if (o.date) { const d = when(o.date); if (!d) throw 'bad date'; patch.ts = d.toISOString(); }
     if (o.source) patch.source = String(o.source).slice(0, 30);
     if (o.merchant) patch.merchant = String(o.merchant).slice(0, 60);
+    if (o.type) { if (!['Expense', 'Income', 'Refund', 'Transfer In', 'Transfer Out', 'Cash Withdrawal'].includes(o.type)) throw 'bad type'; patch.type = o.type; }
+    if (o.category) { if (CATEGORIES.indexOf(o.category) < 0 && o.category !== 'Transfer') throw 'bad category'; patch.category = o.category; patch.review = false; }
     if (Object.keys(patch).length) await patchTx(t.n, patch);
     return [restoreOf('transactions', t)];
   }
@@ -215,6 +217,89 @@ async function one(o, ctx = {}) {
     if (!nt[0]) throw 'unknown note';
     await update('notes', eq('id', o.id), { note: '' });
     return [restoreOf('notes', nt[0])];
+  }
+  if (op === 'add_tx') {
+    // Money in or moved, logged by telling: income, a refund, a transfer, a cash withdrawal.
+    const TYPES = ['Income', 'Transfer In', 'Transfer Out', 'Refund', 'Cash Withdrawal'];
+    const amt = Number(o.amount);
+    if (TYPES.indexOf(o.type) < 0 || !(amt > 0)) throw 'need a type and amount';
+    const category = /^Transfer/.test(o.type) ? 'Transfer' : o.type === 'Refund' && CATEGORIES.indexOf(o.category) >= 0 ? o.category : '';
+    const n = await addTx({ date: when(o.date) || new Date(), type: o.type, amount: amt, merchant: String(o.merchant || o.type).slice(0, 60), category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
+    return [voidUndo(n)];
+  }
+  if (op === 'edit_owed') {
+    const ow = await select('owed', eq('id', o.id));
+    if (!ow[0]) throw 'unknown IOU';
+    const patch = {};
+    if (o.amount !== undefined) { const a = Number(o.amount); if (!(a > 0)) throw 'bad amount'; patch.amount = a; }
+    if (o.who) patch.who = String(o.who).slice(0, 40);
+    if (o.for !== undefined) patch.purpose = String(o.for).slice(0, 80);
+    if (!Object.keys(patch).length) throw 'nothing to change';
+    await update('owed', eq('id', o.id), patch);
+    return [restoreOf('owed', ow[0])];
+  }
+  if (op === 'remove_owed') {
+    const ow = await select('owed', eq('id', o.id));
+    if (!ow[0]) throw 'unknown IOU';
+    await update('owed', eq('id', o.id), { status: 'removed' });
+    return [restoreOf('owed', ow[0])];
+  }
+  if (op === 'edit_plan') {
+    const pl = await select('plans', eq('id', o.id));
+    if (!pl[0]) throw 'unknown plan';
+    const patch = {};
+    if (o.amount !== undefined) { const a = Number(o.amount); if (!(a > 0)) throw 'bad amount'; patch.amount = a; }
+    if (o.what) patch.what = String(o.what).slice(0, 60);
+    if (o.date !== undefined) patch.due = /^\d{4}-\d\d-\d\d/.test(String(o.date)) ? String(o.date).slice(0, 10) : null;
+    if (!Object.keys(patch).length) throw 'nothing to change';
+    await update('plans', eq('id', o.id), patch);
+    return [restoreOf('plans', pl[0])];
+  }
+  if (op === 'add_rule' || op === 'forget_rule') {
+    // A standing category rule for a merchant ("always file Grab as Transport"), or removing one.
+    const key = String(o.pattern || o.merchant || '').toLowerCase().trim();
+    if (key.length < 3) throw 'need a merchant';
+    const before = (await select('rules', eq('pattern', key)))[0];
+    if (op === 'add_rule') {
+      if (CATEGORIES.indexOf(o.category) < 0 && o.category !== 'Transfer') throw 'bad category';
+      await insert('rules', [{ pattern: key, category: o.category, added_by: 'Luis' }], { upsert: true, onConflict: 'pattern' });
+    } else {
+      if (!before) throw 'no rule for ' + key;
+      await remove('rules', eq('pattern', key));
+    }
+    return [before ? { op: 'add_rule', pattern: key, category: before.category } : { op: 'forget_rule', pattern: key }];
+  }
+  if (op === 'add_budget') {
+    const name = String(o.name || '').trim().slice(0, 30);
+    const amt = Math.max(0, Number(o.amount) || 0);
+    const includes = (o.includes || [name]).filter((c) => CATEGORIES.indexOf(c) >= 0);
+    if (!name || !includes.length) throw 'need a name and categories from the list';
+    if ((await select('budgets', eq('name', name))).length) throw 'budget exists, use set_budget';
+    const last = await select('budgets', 'select=sort&order=sort.desc&limit=1');
+    await insert('budgets', [{ name, monthly: amt, includes, sort: o.sort !== undefined ? Number(o.sort) : (last[0] ? last[0].sort + 1 : 0) }]);
+    return [{ op: 'remove_budget', name }];
+  }
+  if (op === 'remove_budget') {
+    const b = (await select('budgets', eq('name', String(o.name || ''))))[0];
+    if (!b) throw 'unknown budget';
+    await remove('budgets', eq('name', b.name));
+    return [{ op: 'add_budget', name: b.name, amount: Number(b.monthly), includes: b.includes, sort: b.sort }];
+  }
+  if (op === 'bill_unhide') {
+    const before = await select('settings', eq('key', 'bills_hidden'));
+    const list = before[0] && Array.isArray(before[0].value) ? before[0].value : [];
+    if (!list.some((h) => h.key === o.key)) throw 'not hidden';
+    await update('settings', eq('key', 'bills_hidden'), { value: list.filter((h) => h.key !== o.key) });
+    return [{ op: 'restore', table: 'settings', key: 'bills_hidden', values: { value: list } }];
+  }
+  if (op === 'undo_change') {
+    // Undo an earlier change by its id in the change log (what "undo that" from Moni does).
+    const ch = (await select('changes', eq('id', Number(o.id))))[0];
+    if (!ch || !Array.isArray(ch.undo) || !ch.undo.length) throw 'nothing to undo for that change';
+    if (ch.undone_at) throw 'already undone';
+    for (const u of ch.undo.slice().reverse()) await one(u);
+    await update('changes', eq('id', ch.id), { undone_at: new Date().toISOString() });
+    return [];
   }
   if (op === 'goal_add') {
     const price = Number(o.price);
@@ -400,4 +485,14 @@ export async function applyOps(ops, actor = 'app') {
     }
   }
   return results;
+}
+
+// The undo button sends back what a change returned; mark those changes as undone so Moni won't undo them again.
+export async function markUndone(ops) {
+  const want = new Set((ops || []).map((o) => JSON.stringify(o)));
+  if (!want.size) return;
+  const recent = await select('changes', 'select=id,undo&undone_at=is.null&order=id.desc&limit=40');
+  for (const c of recent) {
+    if (Array.isArray(c.undo) && c.undo.length && c.undo.every((u) => want.has(JSON.stringify(u)))) await update('changes', eq('id', c.id), { undone_at: new Date().toISOString() });
+  }
 }

@@ -48,6 +48,17 @@ export default function Bills({ data, now }) {
           </div>
         ))}
       </div>
+      {(data.billsHidden || []).length > 0 && (
+        <div className="glass card" style={{ borderRadius: 22, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div className="small muted" style={{ fontWeight: 700 }}>Taken off</div>
+          {data.billsHidden.map((h) => (
+            <div key={h.key} className="row" style={{ fontSize: 14 }}>
+              <span>{h.name} · {peso(Number(String(h.key).split('|')[1]) || 0)}</span>
+              <button className="chip" style={{ minHeight: 44, fontSize: 12 }} onClick={() => change([{ op: 'bill_unhide', key: h.key }], h.name + ' is back on Bills')}>Put back</button>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }

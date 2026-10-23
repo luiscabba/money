@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { sheetGet, sheetPost } from '../../../lib/sheet';
 import { useDb } from '../../../lib/db';
-import { loadData } from '../../../lib/store';
+import { loadData, rules } from '../../../lib/store';
+import { select } from '../../../lib/db';
+import { manila } from '../../../lib/core';
 import { ASK_MODEL, OPS, TOOLS, buildPrompt, toClaudeMessages } from '../../../lib/askPrompt';
 
 export const maxDuration = 60;
@@ -23,6 +25,16 @@ export async function POST(req) {
   if (!process.env.CLAUDE_API_KEY) return NextResponse.json({ reply: 'Add CLAUDE_API_KEY in Vercel to use Moni.', actions: [] });
   // Thirteen months so yearly bills (insurance, domains) are visible; the prompt still lists only recent rows.
   const data = useDb() ? await loadData(13) : await sheetGet({ months: 13 });
+  if (useDb()) {
+    // What Moni needs on top of the screens: the category rules and the change log it can undo from.
+    const [rl, ch] = await Promise.all([rules().catch(() => []), select('changes', 'select=id,at,actor,op,undone_at&actor=eq.app&order=id.desc&limit=15').catch(() => [])]);
+    data.rules = rl;
+    data.recentChanges = ch.map((c) => {
+      const o = c.op || {};
+      const bits = [o.op, o.row && 'row ' + o.row, o.amount !== undefined && 'amount ' + o.amount, o.merchant, o.category, o.name, o.what, o.who, o.account, o.type].filter(Boolean);
+      return { id: c.id, at: manila(c.at).slice(0, 16), what: bits.join(' '), undone: !!c.undone_at };
+    });
+  }
   const { system } = buildPrompt(data);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 55000);

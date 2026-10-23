@@ -46,7 +46,7 @@ function summary(data) {
   }
 }
 
-export const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_floor', 'goal_sweep', 'goal_sweep_keep', 'goal_buy', 'bill_hide'];
+export const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_floor', 'goal_sweep', 'goal_sweep_keep', 'goal_buy', 'goal_match_dismiss', 'bill_hide', 'bill_unhide', 'add_tx', 'edit_owed', 'remove_owed', 'edit_plan', 'add_rule', 'forget_rule', 'add_budget', 'remove_budget', 'undo_change'];
 
 // Changes come back as a structured tool call, never parsed out of prose.
 export const TOOLS = [
@@ -68,7 +68,10 @@ export const TOOLS = [
               merchant: { type: 'string' }, source: { type: 'string', description: 'Maya Wallet, Maya Card, GCash, GoTyme, BPI, Cash, or an app wallet like "Lalamove Wallet"' },
               who: { type: 'string' }, for: { type: 'string' }, id: { type: 'string' }, what: { type: 'string' }, account: { type: 'string' },
               symbol: { type: 'string' }, quantity: { type: 'number' }, avgCost: { type: 'number' }, sleeve: { type: 'string' }, text: { type: 'string' },
-              key: { type: 'string', description: 'bill_hide: the bill key from the list' }, price: { type: 'number' }, ids: { type: 'array', items: { type: 'string' }, description: 'goal_order: goal ids, first is funded first' },
+              key: { type: 'string', description: 'bill_hide / bill_unhide: the bill key from the list' }, price: { type: 'number' },
+              type: { type: 'string', enum: ['Expense', 'Income', 'Refund', 'Transfer In', 'Transfer Out', 'Cash Withdrawal'], description: 'add_tx: the kind of money movement; edit_tx: change a row\'s type' },
+              pattern: { type: 'string', description: 'add_rule / forget_rule: the merchant text the rule matches' },
+              includes: { type: 'array', items: { type: 'string' }, description: 'add_budget: the categories this budget covers' }, ids: { type: 'array', items: { type: 'string' }, description: 'goal_order: goal ids, first is funded first' },
               kind: { type: 'string', enum: ['moni', 'transfer'] },
               moves: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, amount: { type: 'number' } }, required: ['id', 'amount'] }, description: 'goal_sweep: the leftover split across goals' },
               parts: { type: 'array', items: { type: 'object', properties: { amount: { type: 'number' }, category: { type: 'string' }, note: { type: 'string' } }, required: ['amount', 'category'] } }
@@ -108,6 +111,8 @@ const INSTRUCTIONS = [
   'A message may start with [About row N: ...]: he opened Ask from that transaction, so "this" means that row.',
   'A message may include a photo of a receipt, invoice or chat. Read the total, the merchant or item and the date from it, then treat it like logging by telling.',
   'When he asks for a walk-through of what needs sorting, go through review rows, untracked money and today\'s overspend one at a time, proposing the likely change for each.',
+  'More changes: add_tx logs money in or moved (Income, Refund, Transfer In, Transfer Out, Cash Withdrawal) with amount, merchant (who it was from or to), source and date; use add_expense only for spending. edit_tx can also change a row\'s type or category, including bringing back a voided row. edit_owed and remove_owed fix or drop an IOU by id; edit_plan changes a planned purchase. add_rule files a merchant under a category from now on (pattern is the merchant text); forget_rule removes one. add_budget creates a budget with the categories it covers; remove_budget deletes one; set_budget changes an amount. bill_unhide brings back a bill taken off Bills. goal_match_dismiss says a purchase was not for a goal.',
+  'Undo: when he says undo that or take that back, find it in Recent changes and propose undo_change with its id. Never undo something marked undone.',
   'Bills: the Bills screen lists every repeat charge above, including yearly ones whose last charge is older than the transactions shown. When he says one is not a repeat charge, propose bill_hide with its key and name; never say you cannot see a bill that is in that list.',
   'set_balance sets an account\'s whole total as Luis states it (for Maya: wallet plus savings). Use it when he says what a balance is or should be; do not also log a gap to make the numbers meet.',
   'Savings goals: money for a goal stays in Maya; a goal only tags it. goal_add takes name, price and an optional date (YYYY-MM, or YYYY-MM-DD; none means it finishes whenever savings allow). goal_move puts money toward a goal (id, amount; negative takes it out; kind "transfer" when he says he moved it to Maya Savings, else "moni"). goal_edit changes name, price or date (date "" removes it). goal_order sets priority with every active goal id, first is funded first. goal_remove drops a goal. goal_floor sets the lowest his daily limit may go because of goals (amount is pesos per day). goal_sweep moves last week\'s leftover (only when one is listed as pending). goal_buy pays a purchase row from a goal: the row leaves the budget, the goal closes and any leftover goes to the next goal.',
@@ -117,6 +122,17 @@ const INSTRUCTIONS = [
   'Call set_mood once with every reply.',
   'Only call propose_changes when he asked for a change or confirmed one; describe what you propose in the text, never say it is done. Call follow_ups when there are natural next questions.'
 ].join('\n');
+
+// Older months the recent rows don't reach: a total and the three biggest categories per month.
+function history(data) {
+  const by = {};
+  netExpenses(data).forEach((t) => {
+    const k = t.date.slice(0, 7);
+    const m = (by[k] = by[k] || { total: 0, cats: {} });
+    m.total += t.amount; m.cats[t.category] = (m.cats[t.category] || 0) + t.amount;
+  });
+  return Object.keys(by).sort().slice(-12).map((k) => k + ': ' + p(by[k].total) + '; ' + Object.entries(by[k].cats).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, v]) => c + ' ' + p(v)).join(', ')).join(' | ') || 'none';
+}
 
 function goalsLine(data) {
   const plan = data.goalPlan;
@@ -146,6 +162,10 @@ export function buildPrompt(data) {
     'Planned purchases: ' + JSON.stringify(data.plans || []),
     'Untracked money (negative amount = spending the app missed): ' + JSON.stringify(data.gaps || []),
     'Goals (priority order; set-aside per month already taken out of the limits): ' + goalsLine(data),
+    'Category rules (merchant text -> category): ' + (((data.rules || []).map((r) => r.pattern + ' -> ' + r.category).join('; ')) || 'none'),
+    'Bills taken off the list (key, name): ' + (((data.billsHidden || []).map((h) => h.key + ' ' + h.name).join('; ')) || 'none'),
+    'Recent changes (id | when | change | undone): ' + (((data.recentChanges || []).map((c) => [c.id, c.at, c.what, c.undone ? 'undone' : ''].join(' | ')).join('; ')) || 'none'),
+    'Spending by month, last 12 (month: total; top categories): ' + history(data),
     "Luis's notes: " + (((data.notes || []).map((n) => n.id + ': ' + n.text).join('; ')) || 'none'),
     summary(data),
     'Categories: ' + (data.categories || []).join(', '),
