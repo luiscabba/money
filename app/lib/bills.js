@@ -11,11 +11,19 @@ function addMonths(d, n) {
   return x;
 }
 
+// The brand a charge belongs to: its first real word, so "Openai", "OpenAI Go" and "Openai *Chatgpt Subscr"
+// are one company. Price tiers below still keep different plans apart.
+const FILLER = new Set(['the', 'sm', 'mr', 'ms', 'and', 'ph', 'inc', 'xdt', 'grb', 'sp']);
+function brandOf(name) {
+  const words = String(name).toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !FILLER.has(w));
+  return words[0] || String(name).toLowerCase().trim();
+}
+
 export function detectBills(data, now) {
   const today = new Date(now.y, now.m - 1, now.d, 12);
   const groups = {};
   netExpenses(data).filter((t) => t.amount > 0).forEach((t) => {
-    const key = String(t.merchant).toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 2).join(' ');
+    const key = brandOf(t.merchant);
     (groups[key] = groups[key] || []).push(t);
   });
   const bills = [];
