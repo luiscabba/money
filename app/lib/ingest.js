@@ -184,12 +184,20 @@ function ownAccount(merchant, text) {
 
 const near = (when, minutes) => 'ts=gte.' + encodeURIComponent(new Date(when.getTime() - minutes * 60000).toISOString()) + '&ts=lte.' + encodeURIComponent(new Date(when.getTime() + minutes * 60000).toISOString());
 const sameAmt = (a, b) => Math.abs(Number(a) - Number(b)) < 0.01;
+// Two rows are the same shop when their first real word matches. A blank or generic name can't tell rows apart,
+// so it still counts as the same (the email and the text of one payment often name it differently).
+const GENERIC = /^(unknown|qr ph payment|payment|purchase|own account|send to|sent to)/i;
+const word1 = (s) => (String(s || '').toLowerCase().match(/[a-z]{3,}/) || [''])[0];
+function sameShop(a, b) {
+  if (!a || !b || GENERIC.test(a) || GENERIC.test(b)) return true;
+  return word1(a) === word1(b);
+}
 
 async function isDuplicate(tx) {
   if (tx.ref && (await select('transactions', eq('ref', tx.ref) + '&select=n&limit=1')).length) return true;
   const bank = tx.source.split(' ')[0];
-  return (await select('transactions', near(tx.date, 15) + '&select=type,amount,source')).some((r) =>
-    sameAmt(r.amount, tx.amount) && String(r.source).split(' ')[0] === bank && (r.type === tx.type || r.type === 'Void'));
+  return (await select('transactions', near(tx.date, 15) + '&select=type,amount,source,merchant')).some((r) =>
+    sameAmt(r.amount, tx.amount) && String(r.source).split(' ')[0] === bank && (r.type === tx.type || r.type === 'Void') && sameShop(r.merchant, cleanMerchant(tx.merchant || '')));
 }
 
 /* A wallet notification that matches a row already logged another way fills that row in instead of adding one:
@@ -350,7 +358,7 @@ export async function takeSmsRow(c) {
   const bank = tx.source.split(' ')[0];
   const close = await select('transactions', near(tx.date, 15) + '&select=type,amount,source,merchant');
   if (close.some((r) => sameAmt(r.amount, tx.amount) && (
-    (String(r.source).split(' ')[0] === bank && (r.type === tx.type || r.type === 'Void')) ||
+    (String(r.source).split(' ')[0] === bank && (r.type === tx.type || r.type === 'Void') && sameShop(r.merchant, tx.merchant)) ||
     (tx.type === 'Transfer Out' && r.type === 'Transfer Out') ||
     (r.type === 'Expense' && /^QR Ph payment/.test(r.merchant))))) return { result: 'duplicate' };
   const told = await select('transactions', near(tx.date, 36 * 60) + '&ref=like.ask-*&select=amount,source');

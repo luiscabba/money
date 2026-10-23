@@ -16,6 +16,7 @@ const RESTORE = {
   gaps: ['id', ['status']],
   notes: ['id', ['note']],
   goals: ['id', ['name', 'price', 'target_date', 'priority', 'status', 'closed_at', 'bought_row']],
+  accounts: ['name', ['balance', 'as_of', 'updated_by']],
   settings: ['key', ['value']]
 };
 
@@ -130,8 +131,15 @@ async function one(o, ctx = {}) {
   }
   if (op === 'set_balance') {
     if (ACCOUNTS.indexOf(o.account) < 0 || !(Number(o.amount) >= 0)) throw 'need account and amount';
-    await recordBalance(o.account, Number(o.amount), new Date(), 'told Moni');
-    return [];
+    const before = (await select('accounts', eq('name', o.account)))[0];
+    // Maya's notifications show only the wallet, so a total Luis states (savings included) is set directly on the
+    // account; logging it as a wallet reading would shift Maya by the difference instead of setting it.
+    if (o.account === 'Maya') {
+      await update('accounts', eq('name', 'Maya'), { balance: Math.round(Number(o.amount) * 100) / 100, as_of: new Date().toISOString(), updated_by: 'Moni' });
+    } else {
+      await recordBalance(o.account, Number(o.amount), new Date(), 'told Moni');
+    }
+    return before ? [restoreOf('accounts', before)] : [];
   }
   if (op === 'set_holding') {
     await setHolding(o);

@@ -33,7 +33,8 @@ async function updateNetWorth(account, balance, prevBalance, when) {
 // Records a balance and checks it against the last one. Returns the gap id added, if any.
 export async function recordBalance(account, balance, when, note) {
   if (!account || !(balance >= 0)) return null;
-  const prevRows = await select('balances', eq('account', account) + '&order=at.desc&limit=1');
+  // For Maya, totals Luis told Moni aren't wallet readings, so the wallet's change is measured from the last real one.
+  const prevRows = await select('balances', eq('account', account) + (account === 'Maya' ? '&note=not.like.told*' : '') + '&order=at.desc&limit=1');
   const prev = prevRows[0] || null;
   await insert('balances', [{ at: when.toISOString(), account, balance, note: note || '' }]);
   // A reading older than the last one (notifications handled out of order) is kept but changes nothing.
