@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { change, askMoney } from './apply';
 import { peso, appWallets, isAppWallet } from '../lib/money';
 import useData from './useData';
@@ -9,15 +9,38 @@ export const WALLETS = ['Maya Wallet', 'Maya Card', 'GCash', 'GoTyme', 'BPI', 'C
 const when = (d) => new Date(d.replace(' ', 'T')).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export function Sheet({ title, onClose, children }) {
+  const panel = useRef(null);
+  const drag = useRef(null);
+  const [dy, setDy] = useState(0);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    const esc = (e) => { if (e.key === 'Escape') closeRef.current(); };
     window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
-  }, [onClose]);
+    // Freeze the page behind the sheet so scrolling only moves the sheet (iOS ignores overflow alone).
+    const y = window.scrollY;
+    const b = document.body.style;
+    const prev = { position: b.position, top: b.top, left: b.left, right: b.right, overflow: b.overflow };
+    Object.assign(b, { position: 'fixed', top: -y + 'px', left: '0', right: '0', overflow: 'hidden' });
+    return () => { window.removeEventListener('keydown', esc); Object.assign(b, prev); window.scrollTo(0, y); };
+  }, []);
+
+  // Swipe down to close: only when the sheet is scrolled to its top, so reading it still scrolls normally.
+  const start = (e) => { drag.current = panel.current && panel.current.scrollTop <= 0 ? e.touches[0].clientY : null; };
+  const move = (e) => {
+    if (drag.current === null) return;
+    const d = e.touches[0].clientY - drag.current;
+    if (d > 0 && panel.current.scrollTop <= 0) setDy(d); else if (d < 0) { drag.current = null; setDy(0); }
+  };
+  const end = () => { if (dy > 90) onClose(); setDy(0); drag.current = null; };
+
   return (
-    <div role="dialog" aria-label={title} style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
-      <div className="sheetup" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '88dvh', overflowY: 'auto', background: '#14171C', borderRadius: '28px 28px 0 0', border: '1px solid var(--line)', borderBottom: 0, padding: '10px 16px calc(20px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ width: 40, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.25)', alignSelf: 'center' }} aria-hidden="true" />
+    <div role="dialog" aria-label={title} style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,' + Math.max(0.15, 0.55 - dy / 600) + ')', touchAction: 'none' }} onClick={onClose}>
+      <div ref={panel} className={dy ? '' : 'sheetup'} onClick={(e) => e.stopPropagation()} onTouchStart={start} onTouchMove={move} onTouchEnd={end} onTouchCancel={end}
+        style={{ width: '100%', maxWidth: 520, maxHeight: '88dvh', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', transform: dy ? 'translateY(' + dy + 'px)' : undefined, transition: dy ? 'none' : 'transform 0.25s ease', background: '#14171C', borderRadius: '28px 28px 0 0', border: '1px solid var(--line)', borderBottom: 0, padding: '10px 16px calc(20px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <button onClick={onClose} aria-label="Close" style={{ alignSelf: 'center', border: 0, background: 'transparent', padding: '6px 24px', cursor: 'pointer' }}>
+          <span style={{ display: 'block', width: 40, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.25)' }} aria-hidden="true" />
+        </button>
         {children}
       </div>
     </div>
