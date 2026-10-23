@@ -16,7 +16,7 @@ html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: M
 button, input { font: inherit; color: inherit; }
 a { color: inherit; }
 
-.shell { position: relative; min-height: 100dvh; max-width: 520px; margin: 0 auto; overflow: hidden; display: flex; flex-direction: column; }
+.shell { position: relative; min-height: 100dvh; max-width: 520px; margin: 0 auto; overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
 .blob { position: absolute; border-radius: 50%; pointer-events: none; background: radial-gradient(closest-side, var(--c), transparent); }
 /* Soft glows drawn as gradients, not blur filters: iOS Safari paints dark boxes behind animated layers over blurred ones. */
 .b1 { --c: #2B4BB8; left: -260px; top: -80px; width: 640px; height: 640px; opacity: 0.6; }
