@@ -54,6 +54,8 @@ export default function Today() {
     const k = dayKey(d.getFullYear(), d.getMonth() + 1, d.getDate());
     return { k, l: 'MTWTFSS'[i], future: d > today, spent: sum(byKey[k] || []), today: d.getTime() === today.getTime() };
   });
+  // Past days are judged against a normal day's share; today against the same rolling share as the ring.
+  const share = (d) => (d.today ? Math.max(1, s.today + s.safe) : allow);
   const w = weekTrend(data, now), m = monthTrend(data, now);
   const recent = exp.filter((t) => t.amount > 0).slice(-6).reverse();
   const pickedItems = pick ? (byKey[pick] || []) : [];
@@ -131,7 +133,7 @@ export default function Today() {
         {week.map((d, i) => (
           <button key={d.k} disabled={d.future} onClick={() => setPick(pick === d.k ? null : d.k)} aria-label={labelOf(d.k) + (d.future ? '' : ', ' + peso(d.spent))} aria-pressed={pick === d.k}
             className="press" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '4px 5px', borderRadius: 14, border: 0, cursor: d.future ? 'default' : 'pointer', background: pick === d.k ? 'rgba(255,255,255,0.18)' : d.today ? 'rgba(255,255,255,0.08)' : 'transparent' }}>
-            <Ring size={36} delay={i * 0.05} pct={d.spent / allow} full={!d.future && d.spent === 0} color={d.spent > allow ? 'var(--over)' : 'var(--under)'} track={d.future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.14)'} />
+            <Ring size={36} delay={i * 0.05} pct={d.spent / share(d)} full={!d.future && d.spent === 0} color={d.spent > share(d) ? 'var(--over)' : 'var(--under)'} track={d.future ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.14)'} />
             <span style={{ fontSize: 11, fontWeight: 700, color: d.future ? 'var(--dim)' : 'var(--muted)' }}>{d.l}</span>
           </button>
         ))}
