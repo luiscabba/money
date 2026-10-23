@@ -6,7 +6,7 @@ import { addRule } from './store';
 import { recordBalance } from './balances';
 
 const QUOTES = { SPYL: 'LON:SPYL', GOOGL: 'NASDAQ:GOOGL', MSFT: 'NASDAQ:MSFT', AMZN: 'NASDAQ:AMZN', AAPL: 'NASDAQ:AAPL', NVDA: 'NASDAQ:NVDA', ETH: 'CURRENCY:ETHUSD', BTC: 'CURRENCY:BTCUSD' };
-const TX_COLS = ['ts', 'type', 'amount', 'merchant', 'category', 'source', 'ref', 'review', 'note'];
+const TX_COLS = ['ts', 'type', 'amount', 'merchant', 'category', 'source', 'ref', 'review', 'note', 'goal_id'];
 // What undo may put back: table -> [key column, columns allowed].
 const RESTORE = {
   transactions: ['n', TX_COLS],
@@ -229,7 +229,7 @@ async function one(o) {
     return [{ op: 'goal_unmove', id: Number(mv.id) }];
   }
   if (op === 'goal_unmove') {
-    const done = await remove('goal_moves', eq('id', Number(o.id)) + '&kind=neq.purchase');
+    const done = await remove('goal_moves', eq('id', Number(o.id)));
     if (!done.length) throw 'nothing to undo';
     return [];
   }
@@ -255,6 +255,64 @@ async function one(o) {
     const g = await goalOf(o.id);
     await update('goals', eq('id', g.id), { status: 'archived', closed_at: new Date().toISOString() });
     return [restoreOf('goals', g)];
+  }
+  if (op === 'goal_sweep') {
+    // The week's leftover into one or more goals: moves [{ id, amount }].
+    const before = await select('settings', eq('key', 'goal_sweep_pending'));
+    const pend = before[0] ? before[0].value : {};
+    const parts = (o.moves || []).filter((x) => Number(x.amount) > 0);
+    const total = parts.reduce((a, x) => a + Number(x.amount), 0);
+    if (!parts.length) throw 'nothing to move';
+    if (!pend.amount || total > pend.amount + 0.5) throw 'more than the leftover';
+    const undo = [{ op: 'restore', table: 'settings', key: 'goal_sweep_pending', values: { value: pend } }];
+    for (const x of parts) {
+      const g = await goalOf(x.id);
+      const [mv] = await insert('goal_moves', [{ goal_id: g.id, amount: Math.round(Number(x.amount) * 100) / 100, kind: 'sweep', note: 'week of ' + (pend.week || '') }]);
+      undo.push({ op: 'goal_unmove', id: Number(mv.id) });
+    }
+    await update('settings', eq('key', 'goal_sweep_pending'), { value: {} });
+    return undo;
+  }
+  if (op === 'goal_sweep_keep') {
+    const before = await select('settings', eq('key', 'goal_sweep_pending'));
+    if (!before[0] || !before[0].value.amount) throw 'nothing to keep';
+    await update('settings', eq('key', 'goal_sweep_pending'), { value: {} });
+    return [{ op: 'restore', table: 'settings', key: 'goal_sweep_pending', values: { value: before[0].value } }];
+  }
+  if (op === 'goal_buy') {
+    // Pay a purchase from a goal: it leaves the budget, the goal closes, any leftover goes to the next goal.
+    const g = await goalOf(o.id);
+    const t = await getTx(o.row);
+    if (t.type !== 'Expense' || t.goal_id) throw 'not a purchase';
+    const have = (await select('goal_moves', eq('goal_id', g.id) + '&select=amount')).reduce((a, m) => a + Number(m.amount), 0);
+    const amt = Number(t.amount);
+    if (amt > have + 0.5) throw 'only ' + Math.round(have) + ' saved for ' + g.name;
+    const undo = [restoreOf('transactions', t), restoreOf('goals', g)];
+    await patchTx(t.n, { goal_id: g.id, review: false });
+    const [paid] = await insert('goal_moves', [{ goal_id: g.id, amount: -amt, kind: 'purchase', tx_row: t.n, note: t.merchant }]);
+    undo.push({ op: 'goal_unmove', id: Number(paid.id) });
+    const rest = Math.round((have - amt) * 100) / 100;
+    const next = (await select('goals', 'status=eq.active&id=neq.' + encodeURIComponent(g.id) + '&order=priority,created_at&limit=1'))[0];
+    if (rest >= 1 && next) {
+      const mv = await insert('goal_moves', [
+        { goal_id: g.id, amount: -rest, kind: 'leftover', note: 'to ' + next.name },
+        { goal_id: next.id, amount: rest, kind: 'leftover', note: 'from ' + g.name }
+      ]);
+      mv.forEach((m) => undo.push({ op: 'goal_unmove', id: Number(m.id) }));
+    }
+    await update('goals', eq('id', g.id), { status: 'done', closed_at: new Date().toISOString(), bought_row: t.n });
+    const pend = await select('settings', eq('key', 'goal_matches'));
+    if (pend[0] && Array.isArray(pend[0].value)) {
+      undo.push({ op: 'restore', table: 'settings', key: 'goal_matches', values: { value: pend[0].value } });
+      await update('settings', eq('key', 'goal_matches'), { value: pend[0].value.filter((m) => Number(m.row) !== t.n) });
+    }
+    return undo;
+  }
+  if (op === 'goal_match_dismiss') {
+    const pend = await select('settings', eq('key', 'goal_matches'));
+    if (!pend[0] || !Array.isArray(pend[0].value)) throw 'nothing to dismiss';
+    await update('settings', eq('key', 'goal_matches'), { value: pend[0].value.filter((m) => Number(m.row) !== Number(o.row)) });
+    return [{ op: 'restore', table: 'settings', key: 'goal_matches', values: { value: pend[0].value } }];
   }
   if (op === 'goal_cap') {
     const cap = Math.round(Number(o.amount));

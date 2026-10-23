@@ -120,18 +120,35 @@ export async function planGoals(nw) {
   return { list: gs, moves: mv, plan: goalPlan({ goals: gs, moves: mv, now: { y, m, d }, cap: Number(cap) || 0, maya }) };
 }
 
+export async function pendingMatches() {
+  const v = await setting('goal_matches');
+  return Array.isArray(v) ? v : [];
+}
+
+export async function goalPending() {
+  const [sw, matches] = await Promise.all([setting('goal_sweep_pending'), pendingMatches()]);
+  const rows = matches.length ? await select('transactions', 'select=n,amount,merchant,source,ts,goal_id&n=in.(' + matches.map((m) => Number(m.row)).join(',') + ')') : [];
+  return {
+    sweep: sw && sw.amount ? sw : null,
+    matches: matches.map((mt) => {
+      const t = rows.find((r) => Number(r.n) === Number(mt.row));
+      return t && !t.goal_id ? { row: Number(t.n), goal: mt.goal, amount: Number(t.amount), merchant: t.merchant, source: t.source, ts: t.ts } : null;
+    }).filter(Boolean)
+  };
+}
+
 export async function loadData(months = 13) {
   const nick = await names();
   const [bs, tx, nw, hold, ih, ow, pl, gp, nt] = await Promise.all([
     budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes()
   ]);
-  const g = await planGoals(nw);
+  const [g, pending] = await Promise.all([planGoals(nw), goalPending()]);
   const total = bs.reduce((a, b) => a + b.budget, 0);
   const [yy, mm] = manilaDay().split('-').map(Number);
   return {
     updatedAt: manila(new Date()).replace(' ', 'T') + '+08:00',
     allowance: Math.round((total - g.plan.setAside) / new Date(yy, mm, 0).getDate()),
-    goals: g.list, goalMoves: g.moves, goalPlan: g.plan,
+    goals: g.list, goalMoves: g.moves, goalPlan: g.plan, goalPending: pending,
     budgets: bs, transactions: tx, netWorth: nw, holdings: hold, investHistory: ih, owed: ow, plans: pl, gaps: gp, notes: nt,
     categories: CATEGORIES
   };

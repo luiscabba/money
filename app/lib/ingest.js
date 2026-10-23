@@ -4,6 +4,7 @@ import { select, update, eq } from './db';
 import { CATEGORIES, cleanMerchant, sourceAccount, manilaDay, peso } from './core';
 import { addRule, recipientRule, rules, allowance, transactions } from './store';
 import { addTx } from './ops';
+import { matchGoal, addMatch } from './goalJobs';
 import { recordBalance } from './balances';
 import { push } from './push';
 
@@ -382,6 +383,14 @@ export async function notifyNew(added) {
       title = amt + ' in · ' + t.merchant; body = 'Income logged';
     } else {
       title = t.type + ' · ' + amt; body = t.merchant;
+    }
+    if (t.type === 'Expense' && t.row) {
+      const g = await matchGoal(t).catch(() => null);
+      if (g) {
+        await addMatch(t.row, g.id);
+        await push(amt + ' · ' + t.merchant, 'Is this the ' + g.name + '? Tap to pay it from the goal.', '/budgets?tab=goals');
+        continue;
+      }
     }
     if (t.ask) { title = amt + ' ' + t.merchant.replace(/^Send to/, 'to'); body = 'What was it? Tap to tell Money.'; }
     else if (t.review) body += ' · tap to categorize';

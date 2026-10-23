@@ -5,6 +5,7 @@ import { allowance, transactions, gaps, holdings, netWorth } from '../../../../l
 import { spentOn } from '../../../../lib/ingest';
 import { push } from '../../../../lib/push';
 import { investSnapshot } from '../../../../lib/ibkr';
+import { sweepWeek } from '../../../../lib/goalJobs';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,11 @@ async function dailyClose() {
   for (let k = 0; k < 60; k++) { if (spentOn(dayBack(k), rows) <= allow) streak++; else break; }
   const body = spent <= allow ? (streak > 1 ? streak + ' days in a row under ₱' + allow + '.' : 'Under ₱' + allow + ' today.') : peso(spent - allow) + ' over today.';
   await push('Daily close: ' + peso(spent), body, '/');
+  // Sunday's close is also the week's: offer what's left of the week to the goals.
+  let sweep = null;
+  if (new Date(manilaDay() + 'T12:00:00Z').getUTCDay() === 0) {
+    try { sweep = await sweepWeek(); if (sweep.push) await push(...sweep.push); } catch (e) { sweep = { error: String(e) }; }
+  }
   // Portfolio value for today, IBKR's line at live prices, and tonight's net worth snapshot.
   const h = await holdings();
   const nw0 = await netWorth();
@@ -30,7 +36,7 @@ async function dailyClose() {
     nw.accounts.forEach((a) => { accounts[a.currency === 'USD' ? a.name + ' (PHP)' : a.name] = round2(a.php); });
     await insert('networth_history', [{ date: manilaDay(), accounts, total_php: round2(nw.accounts.reduce((s, a) => s + a.php, 0)), usd_php: nw.usdphp }], { upsert: true, onConflict: 'date' });
   }
-  return { spent, streak };
+  return { spent, streak, sweep };
 }
 
 async function weeklyRecap() {
@@ -70,7 +76,7 @@ async function eveningCheck() {
 const JOBS = {
   // A push from the Apps Script itself (e.g. the IBKR sync failed).
   push: (b) => push(String(b.title || 'Money').slice(0, 80), String(b.body || '').slice(0, 200), b.url || '/'),
-  'daily-close': dailyClose, 'weekly-recap': weeklyRecap, 'evening-check': eveningCheck, 'test-push': () => push('Test from Money', 'Push is working.', '/') };
+  'daily-close': dailyClose, 'weekly-recap': weeklyRecap, 'evening-check': eveningCheck, 'goal-sweep': async () => { const r = await sweepWeek(); if (r.push) await push(...r.push); return r; }, 'test-push': () => push('Test from Money', 'Push is working.', '/') };
 
 export async function POST(req, { params }) {
   if (!authorizedApp(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

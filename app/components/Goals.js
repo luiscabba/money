@@ -37,6 +37,7 @@ export default function Goals({ data, now }) {
   if (open) return <GoalDetail g={open} data={data} now={now} onBack={() => setView('list')} />;
 
   const maya = (data.netWorth.accounts.find((a) => a.name === 'Maya') || {}).php || 0;
+  const pending = data.goalPending || {};
   const move = async (i) => {
     const ids = rows.map((g) => g.id);
     [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
@@ -57,6 +58,8 @@ export default function Goals({ data, now }) {
         {plan.short > 0 && <div className="small" style={{ color: 'var(--over)' }}>Maya is {peso(plan.short)} short of what's tagged.</div>}
       </div>
 
+      {(pending.matches || []).map((m) => <MatchCard key={m.row} m={m} rows={rows} />)}
+      {pending.sweep && rows.length > 0 && <SweepCard sweep={pending.sweep} rows={rows} />}
       {rows.length === 0 && <div className="small muted" style={{ padding: '8px 4px' }}>No goals yet.</div>}
       {rows.map((g, i) => (
         <div key={g.id} className="glass card rise" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '14px 14px 14px 10px', borderRadius: 22 }}>
@@ -80,6 +83,77 @@ export default function Goals({ data, now }) {
       ))}
       <button className="btn" onClick={() => setView('new')}>New goal</button>
     </>
+  );
+}
+
+// Sunday's leftover: one goal, or split down the priority list filling each goal's month first.
+function splitByPriority(rows, amount) {
+  const out = [];
+  let left = amount;
+  for (const g of rows) {
+    if (left <= 0) break;
+    const room = g.dated ? (g.thisMonth ? g.thisMonth.left : 0) : 0;
+    const put = Math.min(left, room);
+    if (put > 0) { out.push({ id: g.id, amount: put }); left -= put; }
+  }
+  if (left > 0 && rows[0]) {
+    const top = out.find((x) => x.id === rows[0].id);
+    if (top) top.amount += left; else out.unshift({ id: rows[0].id, amount: left });
+  }
+  return out;
+}
+
+function SweepCard({ sweep, rows }) {
+  const [pick, setPick] = useState(rows[0].id);
+  const [busy, setBusy] = useState(false);
+  const moves = pick === 'split' ? splitByPriority(rows, sweep.amount) : [{ id: pick, amount: sweep.amount }];
+  const addFor = (id) => { const x = moves.find((m) => m.id === id); return x ? x.amount : 0; };
+  const go = async (ops, text) => { setBusy(true); await change(ops, text); setBusy(false); };
+  const choice = (on) => ({ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', borderRadius: 18, textAlign: 'left', cursor: 'pointer', color: 'var(--ink)', background: on ? 'rgba(195,139,255,0.14)' : 'rgba(255,255,255,0.06)', border: '1px solid ' + (on ? 'rgba(195,139,255,0.6)' : 'rgba(255,255,255,0.14)') });
+  return (
+    <div className="glass card strong rise" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 34, fontWeight: 800 }}>{peso(sweep.amount)}</div>
+        <div className="small muted">unspent last week · {peso(sweep.spent)} of {peso(sweep.limit)}</div>
+      </div>
+      <div role="radiogroup" aria-label="Where it goes" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map((g) => (
+          <button key={g.id} role="radio" aria-checked={pick === g.id} onClick={() => setPick(g.id)} style={choice(pick === g.id)}>
+            <span className="row" style={{ fontSize: 14, fontWeight: 800 }}><span>{g.name}</span><span style={{ color: GOAL }}>{addFor(g.id) ? '+' + peso(addFor(g.id)) : ''}</span></span>
+            <Bar pct={(g.saved + addFor(g.id)) / g.price} h={6} />
+          </button>
+        ))}
+        {rows.length > 1 && (
+          <button role="radio" aria-checked={pick === 'split'} onClick={() => setPick('split')} style={choice(pick === 'split')}>
+            <span style={{ fontSize: 14, fontWeight: 800 }}>Split by priority</span>
+          </button>
+        )}
+      </div>
+      <button className="btn" disabled={busy} onClick={() => go([{ op: 'goal_sweep', moves }], 'Moved ' + peso(sweep.amount))}>Move {peso(sweep.amount)}</button>
+      <button disabled={busy} onClick={() => go([{ op: 'goal_sweep_keep' }], 'Kept it')} style={{ minHeight: 44, border: 0, background: 'transparent', color: 'var(--muted)', fontWeight: 700, cursor: 'pointer' }}>Keep it</button>
+    </div>
+  );
+}
+
+function MatchCard({ m, rows }) {
+  const [busy, setBusy] = useState(false);
+  const g = rows.find((x) => x.id === m.goal);
+  if (!g) return null;
+  const rest = Math.max(0, Math.round(g.saved - m.amount));
+  const next = rows.find((x) => x.id !== g.id);
+  const go = async (ops, text) => { setBusy(true); await change(ops, text); setBusy(false); };
+  return (
+    <div className="glass card strong rise" style={{ display: 'flex', flexDirection: 'column', gap: 12, borderColor: 'rgba(195,139,255,0.6)' }}>
+      <div className="row">
+        <div><div style={{ fontSize: 16, fontWeight: 800 }}>{m.merchant}</div><div className="small muted">{m.source}</div></div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{peso(m.amount)}</div>
+      </div>
+      <div className="row" style={{ fontSize: 14, fontWeight: 800 }}><span>{g.name}</span><span className="muted" style={{ fontWeight: 700 }}>{peso(g.saved)} saved</span></div>
+      <Bar pct={Math.min(1, m.amount / Math.max(1, g.saved))} h={10} />
+      {rest > 0 && next && <div className="small muted">{peso(rest)} left over goes to {next.name}</div>}
+      <button className="btn" disabled={busy || m.amount > g.saved + 0.5} onClick={() => go([{ op: 'goal_buy', id: g.id, row: m.row }], 'Paid from ' + g.name)}>Pay from {g.name}</button>
+      <button disabled={busy} onClick={() => go([{ op: 'goal_match_dismiss', row: m.row }], 'Counted as normal spend')} style={{ minHeight: 44, borderRadius: 22, border: '1px solid var(--line)', background: 'transparent', fontWeight: 800, cursor: 'pointer' }}>Count as normal spend</button>
+    </div>
   );
 }
 

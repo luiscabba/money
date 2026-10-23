@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import Ring from '../../components/Ring';
 import useData from '../../components/useData';
@@ -16,6 +16,12 @@ export default function Budgets() {
   const [sel, setSel] = useState(0);
   const [tab, setTab] = useState('budgets');
   const [open, setOpen] = useState('');
+  // Pushes link to /budgets?tab=goals.
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    const t = u.searchParams.get('tab');
+    if (t && ['budgets', 'goals', 'bills', 'owed'].includes(t)) { setTab(t); u.searchParams.delete('tab'); window.history.replaceState(null, '', u.pathname + u.search); }
+  }, []);
   if (!data) return <Shell glow="b"><Loading error={error} /></Shell>;
 
   const n = daysIn(now.y, now.m);
