@@ -1201,9 +1201,10 @@ function handleReceipt_(m) {
     from: m.getFrom(), subject: m.getSubject(), email: body,
     reply_format: {
       is_payment: 'true only for a completed payment made by the owner (not promos, refunds, statements, shipping updates, money received, failed or pending payments)',
+      kind: 'wallet_top_up if this loads money into an app wallet or stored balance (Lalamove, Grab, ShopeePay, game credits); purchase otherwise',
       amount: 'total paid as a number', currency: 'ISO code, e.g. PHP',
       merchant: 'short merchant name',
-      paid_with: 'Maya, GCash, GoTyme, BPI, Card or Unknown, only from what the email says',
+      paid_with: 'Maya, GCash, GoTyme, BPI, Card, App wallet (paid from the app\'s own stored balance) or Unknown, only from what the email says',
       category: 'one of: ' + CATEGORIES.join(', ')
     }
   });
@@ -1220,17 +1221,55 @@ function handleReceipt_(m) {
   if (!j.is_payment || !(Number(j.amount) > 0)) return 'not a receipt';
   if (j.currency && String(j.currency).toUpperCase() !== 'PHP') return 'receipt not in PHP';
   const wallet = ['Maya', 'GCash', 'GoTyme', 'BPI'].indexOf(j.paid_with) >= 0 ? j.paid_with : '';
+  const appWallet = appWalletName_(j.merchant || '');
+  const amount = Number(j.amount), when = m.getDate();
+  if (j.kind === 'wallet_top_up' && appWallet) {
+    // Loading an app wallet moves money, it isn't spending. If the bank already logged it as a purchase, fix that row.
+    const hit = nearbyRow_(amount, when, 90, 'Expense');
+    if (hit) {
+      const sh = SpreadsheetApp.getActive().getSheetByName('Transactions');
+      sh.getRange(hit, 2).setValue('Transfer Out'); sh.getRange(hit, 4).setValue(appWallet); sh.getRange(hit, 5).setValue('Transfer'); sh.getRange(hit, 9).setValue('');
+      return 'top-up matched';
+    }
+    if (sameMoneyNearby_(amount, when, 90)) return 'duplicate';
+    const top = { date: when, type: 'Transfer Out', amount: amount, merchant: appWallet, category: 'Transfer', source: wallet ? wallet + ' (receipt)' : 'Receipt', ref: '', review: !wallet };
+    appendRow_(top);
+    return top;
+  }
+  const paidFromApp = j.paid_with === 'App wallet' && appWallet;
   const tx = {
-    date: m.getDate(), type: 'Expense', amount: Number(j.amount),
+    date: when, type: 'Expense', amount: amount,
     merchant: cleanMerchant_(j.merchant || m.getFrom()),
     category: CATEGORIES.indexOf(j.category) >= 0 ? j.category : '',
-    source: wallet ? wallet + ' (receipt)' : 'Receipt', ref: ''
+    source: paidFromApp ? appWallet : wallet ? wallet + ' (receipt)' : 'Receipt', ref: ''
   };
   if (!tx.category) tx.category = categorize_(tx.merchant, body);
-  tx.review = !wallet || !tx.category || tx.category === 'Other';
+  tx.review = (!wallet && !paidFromApp) || !tx.category || tx.category === 'Other';
   if (sameMoneyNearby_(tx.amount, tx.date, 90)) return 'duplicate';
   appendRow_(tx);
   return tx;
+}
+
+// "Lalamove Philippines" → "Lalamove Wallet": the name an app's stored balance goes by in the sheet.
+function appWalletName_(merchant) {
+  const w = String(merchant).replace(/\s*(wallet|top.?up|load|cash.?in|inc\.?|philippines|ph)\b.*$/i, '').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '';
+  const name = (w[0].length >= 4 ? [w[0]] : w.slice(0, 2)).join(' ');
+  return name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) + ' Wallet';
+}
+
+// Row number of a row of this type with the same amount within the window, or 0.
+function nearbyRow_(amount, date, minutes, type) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Transactions');
+  const last = sh.getLastRow();
+  if (last < 2) return 0;
+  const n = Math.min(80, last - 1);
+  const rows = sh.getRange(last - n + 1, 1, n, 3).getValues();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (r[1] === type && Math.abs(Number(r[2]) - amount) < 0.01 && Math.abs(new Date(r[0]).getTime() - date.getTime()) < minutes * 60000) return last - n + 1 + i;
+  }
+  return 0;
 }
 
 /* Any non-income row with the same amount within the window. */

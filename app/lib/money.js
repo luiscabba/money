@@ -102,3 +102,20 @@ export function avgMonthlySpend(data, now) {
   }
   return totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
 }
+
+// App wallets (Lalamove, Grab, ShopeePay…): a top-up is a Transfer Out whose merchant is "<Brand> Wallet";
+// spending paid from it has that name as its source. Maya Wallet is a bank account, not one of these.
+export const isAppWallet = (s) => /\bwallet$/i.test(String(s || '').trim()) && !/^maya\b/i.test(String(s || '').trim());
+
+export function appWallets(data) {
+  const bal = {};
+  (data.transactions || []).forEach((t) => {
+    const to = t.raw || t.merchant;
+    if (t.type === 'Transfer Out' && isAppWallet(to)) bal[to] = (bal[to] || 0) + t.amount;
+    if (isAppWallet(t.source)) {
+      if (t.type === 'Expense') bal[t.source] = (bal[t.source] || 0) - t.amount;
+      if (t.type === 'Refund') bal[t.source] = (bal[t.source] || 0) + t.amount;
+    }
+  });
+  return Object.entries(bal).map(([name, php]) => ({ name, php: Math.round(php * 100) / 100 })).filter((w) => Math.abs(w.php) >= 1).sort((a, b) => b.php - a.php);
+}

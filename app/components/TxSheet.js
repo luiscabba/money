@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { change, askMoney } from './apply';
-import { peso } from '../lib/money';
+import { peso, appWallets, isAppWallet } from '../lib/money';
+import useData from './useData';
 
 export const CATS = ['Food & Drinks', 'Groceries', 'Shopping', 'Transport', 'Subscriptions', 'Bills & Phone', 'Entertainment', 'Fitness', 'Personal Care', 'Other'];
 export const WALLETS = ['Maya Wallet', 'Maya Card', 'GCash', 'GoTyme', 'BPI', 'Cash'];
@@ -24,9 +25,12 @@ export function Sheet({ title, onClose, children }) {
 }
 
 const label = { fontSize: 12, fontWeight: 700, color: 'var(--muted)' };
+// Apps that hold a balance you top up first.
+const WALLET_BRANDS = /lalamove|grab|shopee|lazada|angkas|joyride|move ?it|foodpanda|beep|steam|playstation|google play|coins\.ph|tiktok/i;
 
 // Opens from any transaction row: category, not spending, nickname, note, fix, split, remove, ask.
 export default function TxSheet() {
+  const { data } = useData();
   const [t, setT] = useState(null);
   const [mode, setMode] = useState('');
   const [name, setName] = useState('');
@@ -51,6 +55,10 @@ export default function TxSheet() {
   const person = /^Sen[dt] to /i.test(raw);
   const run = async (ops, text) => { setBusy(true); const r = await change(ops, text); setBusy(false); if (r.ok) close(); };
   const splitSum = parts.reduce((a, p) => a + (Number(p.amount) || 0), 0);
+  // "Lalamove" → "Lalamove Wallet": where a top-up goes, and a source for what it pays.
+  const bw = String(raw).replace(/\s*(wallet|top.?up|load|cash.?in|inc\.?|philippines|ph)\b.*$/i, '').trim().split(/\s+/).filter(Boolean);
+  const walletName = bw.length ? (bw[0].length >= 4 ? [bw[0]] : bw.slice(0, 2)).join(' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) + ' Wallet' : '';
+  const sources = WALLETS.concat((data ? appWallets(data) : []).map((w) => w.name)).concat(walletName && !isAppWallet(t.source) ? [walletName] : []).filter((w, i, a) => a.indexOf(w) === i);
 
   return (
     <Sheet title="Transaction" onClose={close}>
@@ -70,6 +78,7 @@ export default function TxSheet() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {CATS.map((c) => <button key={c} disabled={busy} className={'chip' + (t.category === c && !t.review ? ' on' : '')} onClick={() => run([{ op: 'recategorize', row: t.row, category: c, remember: person }], t.merchant + ' → ' + c)}>{c}</button>)}
             <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, remember: person }], 'Not counted as spending')}>Not spending</button>
+            {!person && walletName && (WALLET_BRANDS.test(raw) || isAppWallet(raw)) && <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, note: walletName }], 'Moved to ' + walletName)}>Top-up to {walletName}</button>}
           </div>
           {person && <span className="small muted">Remembered for this person from now on.</span>}
         </div>
@@ -103,7 +112,7 @@ export default function TxSheet() {
             <input aria-label="Amount" id="tx-amt" className="input" style={{ minHeight: 44, fontSize: 15 }} inputMode="decimal" value={fix.amount} onChange={(e) => setFix({ ...fix, amount: e.target.value })} />
             <input aria-label="Date and time" id="tx-date" className="input" style={{ minHeight: 44, fontSize: 15 }} type="datetime-local" value={fix.date.replace(' ', 'T')} onChange={(e) => setFix({ ...fix, date: e.target.value })} />
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{WALLETS.map((w) => <button type="button" key={w} className={'chip' + (fix.source === w ? ' on' : '')} onClick={() => setFix({ ...fix, source: w })}>{w}</button>)}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{sources.map((w) => <button type="button" key={w} className={'chip' + (fix.source === w ? ' on' : '')} onClick={() => setFix({ ...fix, source: w })}>{w}</button>)}</div>
           <button className="btn" disabled={busy || !(Number(fix.amount) > 0)} type="submit">Save</button>
         </form>
       )}
