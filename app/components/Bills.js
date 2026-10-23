@@ -1,6 +1,7 @@
 'use client';
 import { peso } from '../lib/money';
 import { detectBills } from '../lib/bills';
+import { change } from './apply';
 
 const COLORS = ['#FF8A3D', '#C38BFF', '#3DDC97', '#4D7CFF', '#FFD166', '#8A93A6'];
 const short = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -39,6 +40,7 @@ export default function Bills({ data, now }) {
               <div style={{ fontSize: 15, fontWeight: 700 }}>{b.name}</div>
               <div style={{ fontSize: 12, color: b.overdue ? '#FFB27D' : '#8A93A6' }}>{b.overdue ? 'Expected ' + short(b.next) + ' · not seen' : b.every + ' · ' + b.source}</div>
             </div>
+            <button onClick={() => change([{ op: 'bill_hide', key: b.key, name: b.name }], b.name + ' taken off Bills')} className="chip" style={{ minHeight: 32, fontSize: 12, padding: '0 10px' }}>Not a bill</button>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 15, fontWeight: 800 }}>{peso(b.amount)}</div>
               <div style={{ fontSize: 12, color: '#8A93A6' }}>{b.overdue ? 'Overdue' : b.every === 'Yearly' ? new Date(b.next + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : short(b.next)}</div>

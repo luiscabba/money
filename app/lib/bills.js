@@ -19,7 +19,11 @@ function brandOf(name) {
   return words[0] || String(name).toLowerCase().trim();
 }
 
+// A bill Luis said isn't one: its brand plus rounded price, so another plan from the same brand still shows.
+export const billKey = (name, amount) => brandOf(name) + '|' + Math.round(amount);
+
 export function detectBills(data, now) {
+  const hidden = new Set((data.billsHidden || []).map((h) => h.key));
   const today = new Date(now.y, now.m - 1, now.d, 12);
   const groups = {};
   netExpenses(data).filter((t) => t.amount > 0).forEach((t) => {
@@ -50,12 +54,14 @@ export function detectBills(data, now) {
       const monthly = !yearly && (isSub ? true : gaps.every((g) => g >= 24 && g <= 38));
       if (!monthly && !yearly) return;
       if ((today - last) / DAY > (yearly ? 400 : 45)) return; // stopped
+      const key = billKey(items[items.length - 1].merchant, tier.amount);
+      if (hidden.has(key)) return;
       const next = yearly ? addMonths(last, 12) : addMonths(last, 1);
       const overdue = !yearly && (today - next) / DAY >= 1;
       bills.push({
         name: items[items.length - 1].merchant.replace(/[#*].*$/, '').replace(/\s*(Ab|Inc\.?|Services)$/i, '').trim() || 'Charge',
         amount: tier.amount, every: yearly ? 'Yearly' : 'Monthly', source: items[items.length - 1].source,
-        last: fmt(last), next: fmt(next), overdue,
+        last: fmt(last), next: fmt(next), overdue, key,
         daysTo: Math.round((next - today) / DAY)
       });
     });

@@ -27,6 +27,7 @@ function summary(data) {
     const top = Object.entries(byMerchant).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k} ${p(v)}`).join(', ');
     const bills = detectBills(data, now);
     const next = bills.bills.filter((b) => !b.overdue && b.daysTo >= 0 && b.daysTo <= 30).map((b) => `${b.name} ${p(b.amount)} on ${b.next}`).join(', ') || 'none';
+    const all = bills.bills.map((b) => `${b.name} ${p(b.amount)} ${b.every.toLowerCase()}, last ${b.last}, next ${b.next}${b.overdue ? ' (overdue)' : ''} [key ${b.key}]`).join('; ') || 'none';
     const spent = monthSpent(data, now.y, now.m);
     return [
       'Worked-out numbers (trust these over adding rows yourself):',
@@ -37,14 +38,15 @@ function summary(data) {
       `Month changes by category: ${mover(m)}.`,
       'Budgets this month: ' + groups.join('; ') + '.',
       'Top merchants this month: ' + (top || 'none') + '.',
-      `Repeat charges in the next 30 days (${p(bills.next30)} total): ${next}.`
+      `Repeat charges in the next 30 days (${p(bills.next30)} total): ${next}.`,
+      `Every repeat charge on the Bills screen (${p(bills.monthlyTotal)} a month): ${all}.`
     ].join('\n');
   } catch (e) {
     return '';
   }
 }
 
-export const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_floor', 'goal_sweep', 'goal_sweep_keep', 'goal_buy'];
+export const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_floor', 'goal_sweep', 'goal_sweep_keep', 'goal_buy', 'bill_hide'];
 
 // Changes come back as a structured tool call, never parsed out of prose.
 export const TOOLS = [
@@ -66,7 +68,7 @@ export const TOOLS = [
               merchant: { type: 'string' }, source: { type: 'string', description: 'Maya Wallet, Maya Card, GCash, GoTyme, BPI, Cash, or an app wallet like "Lalamove Wallet"' },
               who: { type: 'string' }, for: { type: 'string' }, id: { type: 'string' }, what: { type: 'string' }, account: { type: 'string' },
               symbol: { type: 'string' }, quantity: { type: 'number' }, avgCost: { type: 'number' }, sleeve: { type: 'string' }, text: { type: 'string' },
-              price: { type: 'number' }, ids: { type: 'array', items: { type: 'string' }, description: 'goal_order: goal ids, first is funded first' },
+              key: { type: 'string', description: 'bill_hide: the bill key from the list' }, price: { type: 'number' }, ids: { type: 'array', items: { type: 'string' }, description: 'goal_order: goal ids, first is funded first' },
               kind: { type: 'string', enum: ['moni', 'transfer'] },
               moves: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, amount: { type: 'number' } }, required: ['id', 'amount'] }, description: 'goal_sweep: the leftover split across goals' },
               parts: { type: 'array', items: { type: 'object', properties: { amount: { type: 'number' }, category: { type: 'string' }, note: { type: 'string' } }, required: ['amount', 'category'] } }
@@ -106,6 +108,7 @@ const INSTRUCTIONS = [
   'A message may start with [About row N: ...]: he opened Ask from that transaction, so "this" means that row.',
   'A message may include a photo of a receipt, invoice or chat. Read the total, the merchant or item and the date from it, then treat it like logging by telling.',
   'When he asks for a walk-through of what needs sorting, go through review rows, untracked money and today\'s overspend one at a time, proposing the likely change for each.',
+  'Bills: the Bills screen lists every repeat charge above, including yearly ones whose last charge is older than the transactions shown. When he says one is not a repeat charge, propose bill_hide with its key and name; never say you cannot see a bill that is in that list.',
   'Savings goals: money for a goal stays in Maya; a goal only tags it. goal_add takes name, price and an optional date (YYYY-MM, or YYYY-MM-DD; none means it finishes whenever savings allow). goal_move puts money toward a goal (id, amount; negative takes it out; kind "transfer" when he says he moved it to Maya Savings, else "moni"). goal_edit changes name, price or date (date "" removes it). goal_order sets priority with every active goal id, first is funded first. goal_remove drops a goal. goal_floor sets the lowest his daily limit may go because of goals (amount is pesos per day). goal_sweep moves last week\'s leftover (only when one is listed as pending). goal_buy pays a purchase row from a goal: the row leaves the budget, the goal closes and any leftover goes to the next goal.',
   'This month counts as a saving month: "in 6 months" from October ends in March (date YYYY-MM of the current month plus 5), and the set-aside is the price minus what is saved, divided by the months from this one to the target month inclusive.',
   'Each dated goal has a monthly set-aside that already comes out of the daily and weekly limits. When the goals together would push the daily limit under the floor, the lowest-priority dated goal gets less and a later finish month, or waits with nothing set aside until a goal above it finishes. No-date goals finish when his three-month pace allows. For "can I afford X" questions about something he is saving for, use the goal: saved so far, set-aside, when it is ready.',

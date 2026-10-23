@@ -148,13 +148,13 @@ export async function loadData(months = 13) {
   const [bs, tx, nw, hold, ih, ow, pl, gp, nt] = await Promise.all([
     budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes()
   ]);
-  const [g, pending] = await Promise.all([planGoals(nw, bs), goalPending()]);
+  const [g, pending, hiddenBills] = await Promise.all([planGoals(nw, bs), goalPending(), setting('bills_hidden')]);
   const total = bs.reduce((a, b) => a + b.budget, 0);
   const [yy, mm] = manilaDay().split('-').map(Number);
   return {
     updatedAt: manila(new Date()).replace(' ', 'T') + '+08:00',
     allowance: Math.round((total - g.plan.setAside) / new Date(yy, mm, 0).getDate()),
-    goals: g.list, goalMoves: g.moves, goalPlan: g.plan, goalPending: pending,
+    goals: g.list, goalMoves: g.moves, goalPlan: g.plan, goalPending: pending, billsHidden: Array.isArray(hiddenBills) ? hiddenBills : [],
     budgets: bs, transactions: tx, netWorth: nw, holdings: hold, investHistory: ih, owed: ow, plans: pl, gaps: gp, notes: nt,
     categories: CATEGORIES
   };

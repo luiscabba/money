@@ -314,6 +314,16 @@ async function one(o) {
     await update('settings', eq('key', 'goal_matches'), { value: pend[0].value.filter((m) => Number(m.row) !== Number(o.row)) });
     return [{ op: 'restore', table: 'settings', key: 'goal_matches', values: { value: pend[0].value } }];
   }
+  if (op === 'bill_hide') {
+    // Takes a charge off Bills when it isn't really a repeat (a one-off insurance payment, say).
+    const key = String(o.key || '').trim();
+    if (!/^.{1,60}\|\d+$/.test(key)) throw 'unknown bill';
+    const before = await select('settings', eq('key', 'bills_hidden'));
+    const list = before[0] && Array.isArray(before[0].value) ? before[0].value : [];
+    if (!list.some((h) => h.key === key)) list.push({ key, name: String(o.name || key).slice(0, 60) });
+    await insert('settings', [{ key: 'bills_hidden', value: list, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
+    return [{ op: 'restore', table: 'settings', key: 'bills_hidden', values: { value: before[0] ? before[0].value : [] } }];
+  }
   if (op === 'goal_floor') {
     // The lowest the daily limit may go because of goals.
     const floor = Math.round(Number(o.amount));

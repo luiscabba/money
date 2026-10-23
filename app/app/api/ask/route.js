@@ -21,7 +21,8 @@ export async function POST(req) {
   }
 
   if (!process.env.CLAUDE_API_KEY) return NextResponse.json({ reply: 'Add CLAUDE_API_KEY in Vercel to use Moni.', actions: [] });
-  const data = useDb() ? await loadData(3) : await sheetGet({ months: 3 });
+  // Thirteen months so yearly bills (insurance, domains) are visible; the prompt still lists only recent rows.
+  const data = useDb() ? await loadData(13) : await sheetGet({ months: 13 });
   const { system } = buildPrompt(data);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 55000);
