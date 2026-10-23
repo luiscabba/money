@@ -14,7 +14,9 @@ const RESTORE = {
   owed: ['id', ['status', 'settled_at', 'match_row']],
   plans: ['id', ['status']],
   gaps: ['id', ['status']],
-  notes: ['id', ['note']]
+  notes: ['id', ['note']],
+  goals: ['id', ['name', 'price', 'target_date', 'priority', 'status', 'closed_at', 'bought_row']],
+  settings: ['key', ['value']]
 };
 
 export async function getTx(n) {
@@ -204,6 +206,63 @@ async function one(o) {
     await update('notes', eq('id', o.id), { note: '' });
     return [restoreOf('notes', nt[0])];
   }
+  if (op === 'goal_add') {
+    const price = Number(o.price);
+    const name = String(o.name || '').trim().slice(0, 40);
+    if (!name || !(price > 0)) throw 'need a name and price';
+    const date = goalDate(o.date);
+    const last = await select('goals', 'select=priority&status=eq.active&order=priority.desc&limit=1');
+    const [g] = await insert('goals', [{ name, price, target_date: date, priority: last[0] ? last[0].priority + 1 : 0 }]);
+    return [{ op: 'restore', table: 'goals', key: g.id, values: { status: 'archived' } }];
+  }
+  if (op === 'goal_move') {
+    // Money toward a goal (or back out of it, with a negative amount). It stays in Maya; this only tags it.
+    const amt = Math.round(Number(o.amount) * 100) / 100;
+    const g = await goalOf(o.id);
+    if (!amt) throw 'need an amount';
+    if (amt < 0) {
+      const have = (await select('goal_moves', eq('goal_id', g.id) + '&select=amount')).reduce((a, m) => a + Number(m.amount), 0);
+      if (have + amt < -0.005) throw 'only ' + Math.round(have) + ' in ' + g.name;
+    }
+    const kind = ['sweep', 'transfer', 'moni', 'manual'].includes(o.kind) ? o.kind : 'manual';
+    const [mv] = await insert('goal_moves', [{ goal_id: g.id, amount: amt, kind, tx_row: o.row ? Number(o.row) : null, note: String(o.note || '').slice(0, 80) }]);
+    return [{ op: 'goal_unmove', id: Number(mv.id) }];
+  }
+  if (op === 'goal_unmove') {
+    const done = await remove('goal_moves', eq('id', Number(o.id)) + '&kind=neq.purchase');
+    if (!done.length) throw 'nothing to undo';
+    return [];
+  }
+  if (op === 'goal_edit') {
+    const g = await goalOf(o.id);
+    const patch = {};
+    if (o.name !== undefined) { const n = String(o.name).trim().slice(0, 40); if (!n) throw 'need a name'; patch.name = n; }
+    if (o.price !== undefined) { const p = Number(o.price); if (!(p > 0)) throw 'bad price'; patch.price = p; }
+    if (o.date !== undefined) patch.target_date = goalDate(o.date);
+    if (!Object.keys(patch).length) throw 'nothing to change';
+    await update('goals', eq('id', g.id), patch);
+    return [restoreOf('goals', g)];
+  }
+  if (op === 'goal_order') {
+    // ids in the new priority order, first is funded first.
+    const ids = (o.ids || []).map(String);
+    const gs = await select('goals', 'status=eq.active');
+    if (!ids.length || ids.some((id) => !gs.find((g) => g.id === id))) throw 'unknown goal';
+    for (let i = 0; i < ids.length; i++) await update('goals', eq('id', ids[i]), { priority: i });
+    return gs.map((g) => restoreOf('goals', g));
+  }
+  if (op === 'goal_remove') {
+    const g = await goalOf(o.id);
+    await update('goals', eq('id', g.id), { status: 'archived', closed_at: new Date().toISOString() });
+    return [restoreOf('goals', g)];
+  }
+  if (op === 'goal_cap') {
+    const cap = Math.round(Number(o.amount));
+    if (!(cap >= 0)) throw 'bad cap';
+    const before = await select('settings', eq('key', 'goal_cap'));
+    await insert('settings', [{ key: 'goal_cap', value: cap, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
+    return [{ op: 'restore', table: 'settings', key: 'goal_cap', values: { value: before[0] ? before[0].value : 8000 } }];
+  }
   if (op === 'restore') {
     // Undo: puts back values captured before a change. Only the app's own tables and columns.
     const spec = RESTORE[o.table];
@@ -215,6 +274,21 @@ async function one(o) {
     return [];
   }
   throw 'unknown op';
+}
+
+async function goalOf(id) {
+  const g = await select('goals', eq('id', String(id || '')) + '&status=eq.active');
+  if (!g[0]) throw 'unknown goal';
+  return g[0];
+}
+
+// "2027-04-30", "2027-04" (end of that month), or empty for no date.
+function goalDate(s) {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  if (/^\d{4}-\d\d-\d\d$/.test(t)) return t;
+  if (/^\d{4}-\d\d$/.test(t)) { const [y, m] = t.split('-').map(Number); return t + '-' + String(new Date(y, m, 0).getDate()).padStart(2, '0'); }
+  throw 'bad date';
 }
 
 export async function setHolding(o) {

@@ -6,6 +6,7 @@ import useData from '../../components/useData';
 import Bills from '../../components/Bills';
 import Owed from '../../components/Owed';
 import Seg from '../../components/Seg';
+import Goals from '../../components/Goals';
 import { openTx } from '../../components/apply';
 import { peso, MONTHS, manilaNow, daysIn, budgetGroups, totalBudget, monthSpent } from '../../lib/money';
 
@@ -21,7 +22,8 @@ export default function Budgets() {
   const pace = now.d / n;
   const groups = budgetGroups(data, now.y, now.m);
   const total = totalBudget(data);
-  const left = total - monthSpent(data, now.y, now.m);
+  const setAside = (data.goalPlan && data.goalPlan.setAside) || 0;
+  const left = total - setAside - monthSpent(data, now.y, now.m);
   const cur = groups[sel] || groups[0];
   // Same merchant once, with how many times and the total.
   const groupsOf = (items) => {
@@ -37,13 +39,14 @@ export default function Budgets() {
         <h1 className="h1">Budgets</h1>
         <div className="small muted">{Math.round(pace * 100)}% of {MONTHS[now.m - 1]} gone</div>
       </div>
-      <Seg label="Section" options={[['budgets', 'Budgets'], ['bills', 'Bills'], ['owed', 'Owed']]} value={tab} onChange={setTab} />
+      <Seg label="Section" options={[['budgets', 'Budgets'], ['goals', 'Goals'], ['bills', 'Bills'], ['owed', 'Owed']]} value={tab} onChange={setTab} />
+      {tab === 'goals' && <Goals data={data} now={now} />}
       {tab === 'bills' && <Bills data={data} now={now} />}
       {tab === 'owed' && <Owed data={data} />}
       {tab === 'budgets' && <>
       <div className="glass card strong row">
         <div><div className="small muted">Left in {MONTHS[now.m - 1]}</div><div style={{ fontSize: 26, fontWeight: 800, color: left < 0 ? 'var(--over)' : undefined }}>{left < 0 ? '−' + peso(-left) : peso(left)}</div></div>
-        <div style={{ textAlign: 'right' }}><div className="small muted">Budget</div><div style={{ fontSize: 18, fontWeight: 700 }}>{peso(total)}</div></div>
+        <div style={{ textAlign: 'right' }}><div className="small muted">Budget</div><div style={{ fontSize: 18, fontWeight: 700 }}>{peso(total)}</div>{setAside > 0 && <button onClick={() => setTab('goals')} style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#C38BFF' }}>{peso(setAside)} to goals</button>}</div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 8 }}>

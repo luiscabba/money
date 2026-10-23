@@ -3,7 +3,7 @@ import { sheetPost } from '../../../lib/sheet';
 import { useDb } from '../../../lib/db';
 import { applyOps } from '../../../lib/ops';
 
-const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget'];
+const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_cap'];
 
 export async function POST(req) {
   const { ops } = await req.json();
