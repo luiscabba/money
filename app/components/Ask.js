@@ -2,9 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { applyOps, undoOps } from './apply';
 import useData from './useData';
-import { peso, needsReview, manilaNow } from '../lib/money';
+import { peso, needsReview, manilaNow, netExpenses } from '../lib/money';
 import { safeToSpend } from '../lib/safe';
-import Moni from './Moni';
+import Moni, { ambientMood, MOODS } from './Moni';
 
 const KEY = 'askMoney.v2';
 const when = (d) => new Date(String(d).replace(' ', 'T')).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -96,8 +96,8 @@ export default function Ask({ button = true }) {
     try {
       const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: payload }) });
       if ((res.headers.get('content-type') || '').includes('ndjson') && res.body) {
-        let reply = '', actions = [], replies = [];
-        const show = () => setMsgs([...next, { role: 'assistant', content: reply, actions: actions.map((a) => ({ ...a, on: true, state: 'pending' })), replies }]);
+        let reply = '', actions = [], replies = [], mood = '';
+        const show = () => setMsgs([...next, { role: 'assistant', content: reply, actions: actions.map((a) => ({ ...a, on: true, state: 'pending' })), replies, mood }]);
         const reader = res.body.getReader();
         const dec = new TextDecoder();
         let buf = '';
@@ -111,7 +111,7 @@ export default function Ask({ button = true }) {
             if (!line.trim()) continue;
             let ev; try { ev = JSON.parse(line); } catch (e) { continue; }
             if (ev.d) { reply += ev.d; setBusy(false); show(); }
-            if (ev.actions) { actions = ev.actions; replies = ev.replies || []; }
+            if (ev.actions) { actions = ev.actions; replies = ev.replies || []; mood = MOODS.includes(ev.mood) ? ev.mood : ''; }
           }
         }
         if (!reply.trim() && actions.length) reply = actions.length === 1 ? "Here's the change:" : "Here are the changes:";
@@ -166,10 +166,14 @@ export default function Ask({ button = true }) {
     const m = msgs[i];
     upd(i, (x) => ({ ...x, undoing: true }));
     const r = await undoOps(m.undo);
-    upd(i, (x) => ({ ...x, undoing: false, undo: r.ok ? [] : x.undo, error: r.ok ? '' : "Couldn't undo. Ask me to change it back.", actions: r.ok ? x.actions.map((a) => (a.state === 'done' ? { ...a, state: 'undone' } : a)) : x.actions }));
+    upd(i, (x) => ({ ...x, undoing: false, mood: r.ok ? 'wink' : x.mood, undo: r.ok ? [] : x.undo, error: r.ok ? '' : "Couldn't undo. Ask me to change it back.", actions: r.ok ? x.actions.map((a) => (a.state === 'done' ? { ...a, state: 'undone' } : a)) : x.actions }));
   };
 
   // Starters drawn from what needs attention right now.
+  const nowK = manilaNow().key;
+  const hour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false })) % 24;
+  const todaySpent = data ? netExpenses(data).filter((t) => t.date.startsWith(nowK)).reduce((a, t) => a + t.amount, 0) : 0;
+  const ambient = ambientMood(data && { ...data, todaySpent }, hour);
   const chips = [];
   if (data) {
     const rv = needsReview(data).length;
@@ -186,7 +190,7 @@ export default function Ask({ button = true }) {
       {!open && button && (
         <button onClick={() => setOpen(true)} aria-label="Ask Moni" className="pop"
           style={{ position: 'fixed', right: 'max(16px, calc(50vw - 244px))', bottom: 'calc(84px + env(safe-area-inset-bottom))', zIndex: 20, minHeight: 44, padding: '0 16px 0 6px', display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontSize: 14, fontWeight: 800, boxShadow: '0 8px 30px rgba(0,0,0,0.45)', cursor: 'pointer' }}>
-          <Moni size={32} />Ask Moni
+          <Moni size={32} mood={ambient} />Ask Moni
         </button>
       )}
       {open && (
@@ -202,7 +206,7 @@ export default function Ask({ button = true }) {
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
               {msgs.length === 0 && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, textAlign: 'center' }}>
-                  <Moni size={120} label="Moni" />
+                  <Moni size={120} mood={text.trim() ? 'listen' : ambient} label="Moni" />
                   <div className="small muted" style={{ maxWidth: 300 }}>Ask about your money, or tell me what happened: "1,200 for 2 wigs on GCash, lunch 340 cash". You can also attach a receipt photo.</div>
                 </div>
               )}
@@ -216,7 +220,7 @@ export default function Ask({ button = true }) {
               ) : (
                 <div key={i} className="rise" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    {i === last && <Moni size={30} state="done" />}
+                    {i === last && <Moni size={30} mood={text.trim() && !busy ? 'listen' : m.mood || 'done'} />}
                     <div style={{ fontSize: 15, lineHeight: 1.5, color: '#E4E7EE', whiteSpace: 'pre-wrap', paddingTop: i === last ? 4 : 0 }}>{m.content}</div>
                   </div>
                   {(m.actions || []).length > 0 && (
@@ -251,7 +255,7 @@ export default function Ask({ button = true }) {
                   )}
                 </div>
               ))}
-              {busy && <div className="rise" role="status" aria-label="Moni is thinking" style={{ display: 'flex', gap: 10, alignItems: 'center' }}><Moni size={30} state="think" /><div className="typing"><span /><span /><span /></div></div>}
+              {busy && <div className="rise" role="status" aria-label="Moni is thinking" style={{ display: 'flex', gap: 10, alignItems: 'center' }}><Moni size={30} mood="think" /><div className="typing"><span /><span /><span /></div></div>}
               <div ref={end} />
             </div>
             {msgs.length === 0 && (

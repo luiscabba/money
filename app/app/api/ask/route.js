@@ -69,15 +69,16 @@ export async function POST(req) {
             }
           }
         }
-        let actions = [], replies = [];
+        let actions = [], replies = [], mood = '';
         Object.values(blocks).forEach((b) => {
           if (b.type !== 'tool_use') return;
           let input = {};
           try { input = JSON.parse(b.json || '{}'); } catch (e) { input = {}; }
           if (b.name === 'propose_changes') actions = actions.concat((input.changes || []).filter((c) => c && OPS.includes(c.op)));
+          if (b.name === 'set_mood') mood = String(input.mood || '');
           if (b.name === 'follow_ups') replies = (input.replies || []).filter((r) => typeof r === 'string').slice(0, 3);
         });
-        send({ actions: actions.slice(0, 20), replies });
+        send({ actions: actions.slice(0, 20), replies, mood });
       } catch (e) {
         send({ d: '\n(Connection dropped. Try again.)' });
       }
