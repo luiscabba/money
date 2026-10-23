@@ -36,6 +36,8 @@ export async function recordBalance(account, balance, when, note) {
   const prevRows = await select('balances', eq('account', account) + '&order=at.desc&limit=1');
   const prev = prevRows[0] || null;
   await insert('balances', [{ at: when.toISOString(), account, balance, note: note || '' }]);
+  // A reading older than the last one (notifications handled out of order) is kept but changes nothing.
+  if (prev && when.getTime() <= new Date(prev.at).getTime()) return null;
   await updateNetWorth(account, balance, prev ? Number(prev.balance) : null, when);
   if (!prev) return null;
   const from = new Date(prev.at);

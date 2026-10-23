@@ -4,6 +4,7 @@ import { select, update, eq } from './db';
 import { CATEGORIES, cleanMerchant, sourceAccount, manilaDay, peso } from './core';
 import { addRule, recipientRule, rules, allowance, transactions } from './store';
 import { addTx } from './ops';
+import { netExpenses } from './money';
 import { matchGoal, addMatch } from './goalJobs';
 import { recordBalance } from './balances';
 import { push } from './push';
@@ -138,10 +139,12 @@ async function parseWithClaude(bank, app, text) {
     }
   });
   const txt = await claude(system, user, 300);
-  if (txt === null) return null;
+  // No key: fail loudly so the message is logged as an error and retried, instead of dropped as "not a transaction".
+  if (txt === null) throw new Error('no CLAUDE_API_KEY to read this message');
   const j = jsonIn(txt);
   if (!j) return fallbackTx(bank, text);
   if (!j.is_transaction) return null;
+  if (!['Expense', 'Income', 'Transfer In', 'Transfer Out', 'Refund', 'Cash Withdrawal'].includes(j.type)) return fallbackTx(bank, text);
   const cat = CATEGORIES.indexOf(j.category) >= 0 ? j.category : '';
   const tx = { type: j.type, amount: Number(j.amount), merchant: j.merchant, source: bank, ref: refOf(text), category: j.type === 'Expense' ? cat : '' };
   if (j.type === 'Expense') {
@@ -398,9 +401,7 @@ export async function notifyNew(added) {
   }
 }
 
-// Spending on a day, minus refunds that day from merchants already paid.
+// Spending on a day, counted exactly like the app (refunds cancel their purchase, goal purchases left out).
 export function spentOn(dayStr, rows) {
-  const exp = rows.filter((r) => r.type === 'Expense' && r.date.slice(0, 10) === dayStr).reduce((a, r) => a + r.amount, 0);
-  const back = rows.filter((r) => r.type === 'Refund' && r.date.slice(0, 10) === dayStr && rows.some((e) => e.type === 'Expense' && e.raw === r.raw && e.date <= r.date)).reduce((a, r) => a + r.amount, 0);
-  return exp - back;
+  return netExpenses({ transactions: rows }).filter((r) => r.date.slice(0, 10) === dayStr).reduce((a, r) => a + r.amount, 0);
 }

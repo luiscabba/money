@@ -58,7 +58,8 @@ export async function categorize(n, category, remember) {
   return [restoreOf('transactions', t)];
 }
 
-async function one(o) {
+// ctx.undo, when an op sets it, is what a half-finished multi-step op uses to put itself back on failure.
+async function one(o, ctx = {}) {
   const op = o.op;
   if (op === 'recategorize') {
     if (CATEGORIES.indexOf(o.category) < 0) throw 'bad row or category';
@@ -92,6 +93,7 @@ async function one(o) {
   if (op === 'add_owed') {
     const amt = Number(o.amount);
     if (!(amt > 0) || !o.who) throw 'need who and amount';
+    if (o.row) await getTx(o.row); // check the row before writing anything
     const id = newId();
     await insert('owed', [{ id, who: String(o.who).slice(0, 40), amount: amt, purpose: String(o.for || '').slice(0, 80), status: 'open' }]);
     const undo = [{ op: 'restore', table: 'owed', key: id, values: { status: 'removed' } }];
@@ -181,7 +183,7 @@ async function one(o) {
     if (parts.length < 2) throw 'need two parts';
     const sum = parts.reduce((a, x) => a + Number(x.amount), 0);
     if (Math.abs(sum - Number(t.amount)) > 0.5) throw 'parts must add up to ' + Number(t.amount);
-    const undo = [restoreOf('transactions', t)];
+    const undo = ctx.undo = [restoreOf('transactions', t)];
     const patch = { amount: Number(parts[0].amount), category: parts[0].category, review: false };
     if (parts[0].note) patch.note = String(parts[0].note).slice(0, 120);
     await patchTx(t.n, patch);
@@ -248,8 +250,9 @@ async function one(o) {
     const ids = (o.ids || []).map(String);
     const gs = await select('goals', 'status=eq.active');
     if (!ids.length || ids.some((id) => !gs.find((g) => g.id === id))) throw 'unknown goal';
+    const undo = ctx.undo = gs.map((g) => restoreOf('goals', g));
     for (let i = 0; i < ids.length; i++) await update('goals', eq('id', ids[i]), { priority: i });
-    return gs.map((g) => restoreOf('goals', g));
+    return undo;
   }
   if (op === 'goal_remove') {
     const g = await goalOf(o.id);
@@ -264,13 +267,15 @@ async function one(o) {
     const total = parts.reduce((a, x) => a + Number(x.amount), 0);
     if (!parts.length) throw 'nothing to move';
     if (!pend.amount || total > pend.amount + 0.5) throw 'more than the leftover';
-    const undo = [{ op: 'restore', table: 'settings', key: 'goal_sweep_pending', values: { value: pend } }];
+    for (const x of parts) await goalOf(x.id); // every goal must exist before anything moves
+    const undo = ctx.undo = [{ op: 'restore', table: 'settings', key: 'goal_sweep_pending', values: { value: pend } }];
+    // Cleared first, so a failure part-way can't leave the same leftover on offer twice.
+    await update('settings', eq('key', 'goal_sweep_pending'), { value: {} });
     for (const x of parts) {
       const g = await goalOf(x.id);
       const [mv] = await insert('goal_moves', [{ goal_id: g.id, amount: Math.round(Number(x.amount) * 100) / 100, kind: 'sweep', note: 'week of ' + (pend.week || '') }]);
       undo.push({ op: 'goal_unmove', id: Number(mv.id) });
     }
-    await update('settings', eq('key', 'goal_sweep_pending'), { value: {} });
     return undo;
   }
   if (op === 'goal_sweep_keep') {
@@ -287,7 +292,7 @@ async function one(o) {
     const have = (await select('goal_moves', eq('goal_id', g.id) + '&select=amount')).reduce((a, m) => a + Number(m.amount), 0);
     const amt = Number(t.amount);
     if (amt > have + 0.5) throw 'only ' + Math.round(have) + ' saved for ' + g.name;
-    const undo = [restoreOf('transactions', t), restoreOf('goals', g)];
+    const undo = ctx.undo = [restoreOf('transactions', t), restoreOf('goals', g)];
     await patchTx(t.n, { goal_id: g.id, review: false });
     const [paid] = await insert('goal_moves', [{ goal_id: g.id, amount: -amt, kind: 'purchase', tx_row: t.n, note: t.merchant }]);
     undo.push({ op: 'goal_unmove', id: Number(paid.id) });
@@ -334,6 +339,7 @@ async function one(o) {
   }
   if (op === 'restore') {
     // Undo: puts back values captured before a change. Only the app's own tables and columns.
+    if (o.table === 'settings' && !['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden'].includes(o.key)) throw 'not allowed';
     const spec = RESTORE[o.table];
     if (!spec || o.key === undefined || o.key === null || !o.values) throw 'not allowed';
     const patch = pick(o.values, spec[1].filter((c) => c in o.values));
@@ -374,11 +380,14 @@ export async function setHolding(o) {
 export async function applyOps(ops, actor = 'app') {
   const results = [];
   for (const o of ops || []) {
+    const ctx = {};
     try {
-      const undo = await one(o);
+      const undo = await one(o, ctx);
       results.push({ ok: true, undo });
       await insert('changes', [{ actor, op: o, undo }]).catch(() => null);
     } catch (err) {
+      // Put back whatever a multi-step change had already written, newest first.
+      if (ctx.undo && ctx.undo.length) for (const u of ctx.undo.slice().reverse()) { try { await one(u); } catch (e) { console.error('rollback', o.op, e); } }
       results.push({ ok: false, error: String(err && err.message ? err.message : err) });
     }
   }

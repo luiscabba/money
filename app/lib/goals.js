@@ -63,7 +63,7 @@ export function goalPlan({ goals, moves, now, cap, maya }) {
     used += setAside;
     const fits = setAside >= need - 0.5;
     const eta = fits ? g.target.slice(0, 7) : finishMonth(startLeft, setAside, now);
-    const inThisMonth = saved - (g.price - startLeft);
+    const inThisMonth = saved - savedBefore(g, moves, now);
     return {
       ...row, dated: true, need, setAside, eta,
       thisMonth: { due: Math.round(setAside), in: Math.round(inThisMonth), left: Math.max(0, Math.round(setAside - inThisMonth)) },

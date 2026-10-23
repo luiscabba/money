@@ -1,5 +1,5 @@
 // Server side of goals: the Sunday leftover sweep and spotting a purchase that looks like a goal.
-import { setSetting, planGoals, loadData, pendingMatches } from './store';
+import { setting, setSetting, planGoals, loadData, pendingMatches } from './store';
 import { manilaDay, peso } from './core';
 import { safeToSpend } from './safe';
 
@@ -25,6 +25,9 @@ export async function sweepWeek() {
   const s = safeToSpend(data, { y, m, d });
   const left = Math.max(0, Math.round(s.week - s.before - s.today));
   const mon = new Date(Date.UTC(y, m - 1, d - 6)).toISOString().slice(0, 10);
+  // Each week is offered once, even if the close runs again.
+  if ((await setting('goal_sweep_last')) === mon) return { skipped: 'already offered', week: mon };
+  await setSetting('goal_sweep_last', mon);
   if (left < 50) {
     await setSetting('goal_sweep_pending', {});
     return { left };

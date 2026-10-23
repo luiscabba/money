@@ -14,9 +14,11 @@ export async function budgets() {
 }
 
 export async function allowance(bs) {
-  const total = (bs || (await budgets())).reduce((a, b) => a + b.budget, 0);
+  const b = bs || (await budgets());
+  const total = b.reduce((a, x) => a + x.budget, 0);
+  const { plan } = await planGoals(null, b);
   const [y, m] = manilaDay().split('-').map(Number);
-  return Math.round(total / new Date(y, m, 0).getDate());
+  return Math.round((total - plan.setAside) / new Date(y, m, 0).getDate());
 }
 
 export function txOut(r, nick) {
@@ -37,7 +39,7 @@ function cutoff(months) {
 
 export async function transactions(months, nick) {
   const rows = await select('transactions', 'select=*&type=neq.Void&ts=gte.' + encodeURIComponent(cutoff(months)) + '&order=ts,n');
-  const nk = nick || (await names());
+  const nk = (await nick) || (await names());
   return rows.map((r) => txOut(r, nk));
 }
 
@@ -60,9 +62,8 @@ export async function setSetting(key, value) {
 }
 
 export async function netWorth() {
-  const fx = Number(await setting('usd_php')) || null;
-  const accts = await select('accounts', 'select=*&order=sort');
-  const hist = await select('networth_history', 'select=date,total_php&order=date');
+  const [fxRaw, accts, hist] = await Promise.all([setting('usd_php'), select('accounts', 'select=*&order=sort'), select('networth_history', 'select=date,total_php&order=date')]);
+  const fx = Number(fxRaw) || null;
   return {
     usdphp: fx,
     accounts: accts.map((a) => {
@@ -116,6 +117,10 @@ export async function goalMoves() {
 // Goals may take whatever keeps the daily limit at or above the floor Luis set (₱600 a day by default).
 export async function planGoals(nw, bs) {
   const [gs, mv, floorRaw, bud] = await Promise.all([goals(), goalMoves(), setting('goal_floor'), bs ? Promise.resolve(bs) : budgets()]);
+  return planFrom(gs, mv, floorRaw, bud, nw);
+}
+
+function planFrom(gs, mv, floorRaw, bud, nw) {
   const [y, m, d] = manilaDay().split('-').map(Number);
   const floor = floorRaw === null || floorRaw === undefined ? 600 : Number(floorRaw) || 0;
   const total = bud.reduce((a, b) => a + b.budget, 0);
@@ -131,8 +136,8 @@ export async function pendingMatches() {
   return Array.isArray(v) ? v : [];
 }
 
-export async function goalPending() {
-  const [sw, matches] = await Promise.all([setting('goal_sweep_pending'), pendingMatches()]);
+export async function goalPending(pre) {
+  const [sw, matches] = pre ? [pre.sweep, Array.isArray(pre.matches) ? pre.matches : []] : await Promise.all([setting('goal_sweep_pending'), pendingMatches()]);
   const rows = matches.length ? await select('transactions', 'select=n,amount,merchant,source,ts,goal_id&n=in.(' + matches.map((m) => Number(m.row)).join(',') + ')') : [];
   return {
     sweep: sw && sw.amount ? sw : null,
@@ -143,12 +148,18 @@ export async function goalPending() {
   };
 }
 
+// Everything the screens need, fetched in parallel (about two round trips instead of six in a row).
 export async function loadData(months = 13) {
-  const nick = await names();
-  const [bs, tx, nw, hold, ih, ow, pl, gp, nt] = await Promise.all([
-    budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes()
+  const nick = names();
+  const SETTINGS = ['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden'];
+  const [bs, tx, nw, hold, ih, ow, pl, gp, nt, gs, mv, st] = await Promise.all([
+    budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes(),
+    goals(), goalMoves(), select('settings', 'select=key,value&key=in.(' + SETTINGS.join(',') + ')')
   ]);
-  const [g, pending, hiddenBills] = await Promise.all([planGoals(nw, bs), goalPending(), setting('bills_hidden')]);
+  const set = Object.fromEntries(st.map((r) => [r.key, r.value]));
+  const g = planFrom(gs, mv, set.goal_floor === undefined ? null : set.goal_floor, bs, nw);
+  const pending = await goalPending({ sweep: set.goal_sweep_pending, matches: set.goal_matches });
+  const hiddenBills = set.bills_hidden;
   const total = bs.reduce((a, b) => a + b.budget, 0);
   const [yy, mm] = manilaDay().split('-').map(Number);
   return {
@@ -171,7 +182,9 @@ export async function addRule(merchant, category, by) {
   const key = /^send to /i.test(String(merchant)) ? String(merchant).toLowerCase().trim()
     : String(merchant || '').toLowerCase().replace(/[^a-z0-9& ]/g, ' ').trim().split(/\s+/).slice(0, 3).join(' ');
   if (key.length < 3) return;
-  await insert('rules', [{ pattern: key, category, added_by: by }], { upsert: true, onConflict: 'pattern' });
+  // Claude's guesses never overwrite a rule Luis set; his own choices do replace older ones.
+  if (by === 'Claude') await insert('rules', [{ pattern: key, category, added_by: by }], { ignore: true, onConflict: 'pattern' });
+  else await insert('rules', [{ pattern: key, category, added_by: by }], { upsert: true, onConflict: 'pattern' });
 }
 
 export async function recipientRule(merchant) {

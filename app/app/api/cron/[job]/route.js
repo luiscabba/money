@@ -3,6 +3,7 @@ import { authorizedApp, manilaDay, peso, round2 } from '../../../../lib/core';
 import { insert, update, eq } from '../../../../lib/db';
 import { allowance, transactions, gaps, holdings, netWorth } from '../../../../lib/store';
 import { spentOn } from '../../../../lib/ingest';
+import { netExpenses } from '../../../../lib/money';
 import { push } from '../../../../lib/push';
 import { investSnapshot } from '../../../../lib/ibkr';
 import { sweepWeek } from '../../../../lib/goalJobs';
@@ -13,13 +14,14 @@ export const dynamic = 'force-dynamic';
 const dayBack = (k) => manilaDay(new Date(Date.now() - k * 86400000));
 
 async function dailyClose() {
-  const rows = await transactions(2);
+  const rows = await transactions(3); // reaches back past the 60 days the streak can count
   const allow = await allowance();
   const spent = spentOn(manilaDay(), rows);
   let streak = 0;
   for (let k = 0; k < 60; k++) { if (spentOn(dayBack(k), rows) <= allow) streak++; else break; }
   const body = spent <= allow ? (streak > 1 ? streak + ' days in a row under ₱' + allow + '.' : 'Under ₱' + allow + ' today.') : peso(spent - allow) + ' over today.';
-  await push('Daily close: ' + peso(spent), body, '/');
+  // A failed push must not stop tonight's net worth and portfolio snapshots.
+  try { await push('Daily close: ' + peso(spent), body, '/'); } catch (e) { console.error('daily close push', e); }
   // Sunday's close is also the week's: offer what's left of the week to the goals.
   let sweep = null;
   if (new Date(manilaDay() + 'T12:00:00Z').getUTCDay() === 0) {
@@ -31,7 +33,9 @@ async function dailyClose() {
   await investSnapshot(h, nw0.usdphp);
   if (h.length) await update('accounts', eq('name', 'IBKR'), { balance: round2(h.reduce((a, x) => a + x.usd, 0)), as_of: new Date().toISOString() });
   const nw = await netWorth();
-  if (nw.accounts.some((a) => a.balance)) {
+  // Without today's USD rate the dollar accounts would count as ₱0, so no snapshot tonight.
+  const fxMissing = !nw.usdphp && nw.accounts.some((a) => a.currency === 'USD' && a.balance);
+  if (nw.accounts.some((a) => a.balance) && !fxMissing) {
     const accounts = {};
     nw.accounts.forEach((a) => { accounts[a.currency === 'USD' ? a.name + ' (PHP)' : a.name] = round2(a.php); });
     await insert('networth_history', [{ date: manilaDay(), accounts, total_php: round2(nw.accounts.reduce((s, a) => s + a.php, 0)), usd_php: nw.usdphp }], { upsert: true, onConflict: 'date' });
@@ -45,9 +49,8 @@ async function weeklyRecap() {
   const span = (from, to) => {
     const keys = [];
     for (let k = from; k >= to; k--) keys.push(dayBack(k));
-    const exp = rows.filter((r) => r.type === 'Expense' && keys.indexOf(r.date.slice(0, 10)) >= 0);
-    const ref = rows.filter((r) => r.type === 'Refund' && keys.indexOf(r.date.slice(0, 10)) >= 0);
-    return exp.reduce((a, r) => a + r.amount, 0) - ref.filter((r) => exp.some((e) => e.raw === r.raw && Math.abs(e.amount - r.amount) < 0.01)).reduce((a, r) => a + r.amount, 0);
+    // Same sums as the app: refunds cancel their purchase, goal purchases left out.
+    return netExpenses({ transactions: rows }).filter((r) => keys.indexOf(r.date.slice(0, 10)) >= 0).reduce((a, r) => a + r.amount, 0);
   };
   const cur = span(dow + 7, dow + 1), prev = span(dow + 14, dow + 8);
   let body = 'Tap for your recap.';
