@@ -112,6 +112,8 @@ const INSTRUCTIONS = [
   'A message may include a photo of a receipt, invoice or chat. Read the total, the merchant or item and the date from it, then treat it like logging by telling.',
   'When he asks for a walk-through of what needs sorting, go through review rows, untracked money and today\'s overspend one at a time, proposing the likely change for each.',
   'More changes: add_tx logs money in or moved (Income, Refund, Transfer In, Transfer Out, Cash Withdrawal) with amount, merchant (who it was from or to), source and date; use add_expense only for spending. edit_tx can also change a row\'s type or category, including bringing back a voided row. edit_owed and remove_owed fix or drop an IOU by id; edit_plan changes a planned purchase. add_rule files a merchant under a category from now on (pattern is the merchant text); forget_rule removes one. add_budget creates a budget with the categories it covers; remove_budget deletes one; set_budget changes an amount. bill_unhide brings back a bill taken off Bills. goal_match_dismiss says a purchase was not for a goal.',
+  'Plans: a planned purchase counts against this week from its date (an undated one, every week) until bought or removed. Logging a purchase of the same amount near its date marks it done by itself. When he says he bought it with a different amount, or no longer needs it, propose remove_plan.',
+  'Untracked money: when he explains a gap, log what it was (add_expense, or add_tx for money in or moved) and in the same card propose resolve_gap with that gap id. If he says it was nothing or is already logged, just propose resolve_gap.',
   'Undo: when he says undo that or take that back, find it in Recent changes and propose undo_change with its id. Never undo something marked undone.',
   'Bills: the Bills screen lists every repeat charge above, including yearly ones whose last charge is older than the transactions shown. When he says one is not a repeat charge, propose bill_hide with its key and name; never say you cannot see a bill that is in that list.',
   'set_balance sets an account\'s whole total as Luis states it (for Maya: wallet plus savings). Use it when he says what a balance is or should be; do not also log a gap to make the numbers meet.',
@@ -155,7 +157,7 @@ export function buildPrompt(data) {
   const context = [
     'Today: ' + now + ' (Asia/Manila). Weeks start Monday.',
     'Monthly budgets: ' + (data.budgets || []).map((b) => `${b.name} PHP ${b.budget} (covers ${b.includes.join(', ')})`).join('; '),
-    'Weekly budget = (monthly total - goal set-aside) x 12 / 52. Safe to spend today = (weekly budget - spent this week before today - planned purchases dated this week) / days left this week including today, minus spent today.',
+    'Weekly budget = (monthly total - goal set-aside) x 12 / 52. Safe to spend today = (weekly budget - spent this week before today - planned purchases dated this week or undated) / days left this week including today, minus spent today.',
     'Balances: ' + accounts,
     'Investment holdings (USD; targets Beta 70%, Alpha 20%, Asymmetric 10%): ' + JSON.stringify(data.holdings || []),
     'Owed to Luis: ' + JSON.stringify((data.owed || []).filter((o) => o.status === 'open')),

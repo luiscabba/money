@@ -211,6 +211,7 @@ async function claimReceipt(tx) {
     const told = /^ask-/.test(r.ref);
     const receipt = /receipt/i.test(r.source);
     if (!told && !receipt) continue;
+    if (told && /^cash$/i.test(String(r.source).trim())) continue; // paid in cash: not this wallet payment
     if (!sameAmt(r.amount, tx.amount)) continue;
     const dt = Math.abs(new Date(r.ts).getTime() - tx.date.getTime());
     if (dt >= (told ? 36 * 60 : 90) * 60000) continue;
@@ -362,7 +363,7 @@ export async function takeSmsRow(c) {
     (tx.type === 'Transfer Out' && r.type === 'Transfer Out') ||
     (r.type === 'Expense' && /^QR Ph payment/.test(r.merchant))))) return { result: 'duplicate' };
   const told = await select('transactions', near(tx.date, 36 * 60) + '&ref=like.ask-*&select=amount,source');
-  if (told.some((r) => sameAmt(r.amount, tx.amount) && (String(r.source).split(' ')[0] === bank || r.source === 'Cash'))) return { result: 'duplicate' };
+  if (told.some((r) => sameAmt(r.amount, tx.amount) && String(r.source).split(' ')[0] === bank)) return { result: 'duplicate' };
   if (/^Send to /.test(tx.merchant)) {
     const known = await recipientRule(tx.merchant);
     if (known === 'Transfer') { tx.type = 'Transfer Out'; tx.category = 'Transfer'; }

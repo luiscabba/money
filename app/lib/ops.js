@@ -4,8 +4,10 @@ import { select, insert, update, remove, eq } from './db';
 import { CATEGORIES, ACCOUNTS, newId, parseWhen } from './core';
 import { addRule } from './store';
 import { recordBalance } from './balances';
+import { matchGoal, addMatch } from './goalJobs';
 
 const QUOTES = { SPYL: 'LON:SPYL', GOOGL: 'NASDAQ:GOOGL', MSFT: 'NASDAQ:MSFT', AMZN: 'NASDAQ:AMZN', AAPL: 'NASDAQ:AAPL', NVDA: 'NASDAQ:NVDA', ETH: 'CURRENCY:ETHUSD', BTC: 'CURRENCY:BTCUSD' };
+const HOLDING_COLS = ['symbol', 'sleeve', 'quantity', 'avg_cost', 'price', 'prev_close', 'quote', 'updated_at', 'mark'];
 const TX_COLS = ['ts', 'type', 'amount', 'merchant', 'category', 'source', 'ref', 'review', 'note', 'goal_id'];
 // What undo may put back: table -> [key column, columns allowed].
 const RESTORE = {
@@ -35,7 +37,25 @@ export async function addTx(tx) {
     review: !!(tx.review || tx.category === 'Other'), note: tx.note || ''
   };
   const [saved] = await insert('transactions', [row]);
-  return Number(saved.n);
+  const n = Number(saved.n);
+  if (row.type === 'Expense') {
+    const p = await closePlanFor(row).catch(() => null);
+    if (p && tx.closed) tx.closed.push(p);
+  }
+  return n;
+}
+
+// A purchase that matches a planned one (same amount, within a day of its date, or any time for an undated plan)
+// marks the plan done, so it isn't counted twice. Returns the plan as it was, for undo.
+async function closePlanFor(row) {
+  const open = await select('plans', 'status=eq.planned');
+  const day = row.ts.slice(0, 10);
+  const near = (d) => !d || Math.abs(new Date(d + 'T12:00:00Z') - new Date(day + 'T12:00:00Z')) <= 86400000 * 1.5;
+  const amt = Number(row.amount);
+  const p = open.find((x) => Math.abs(Number(x.amount) - amt) <= Math.max(1, amt * 0.03) && near(x.due));
+  if (!p) return null;
+  await update('plans', eq('id', p.id), { status: 'done' });
+  return p;
 }
 
 const patchTx = (n, patch) => update('transactions', eq('n', n), patch);
@@ -88,8 +108,12 @@ async function one(o, ctx = {}) {
   if (op === 'add_expense') {
     const amt = Number(o.amount);
     if (!(amt > 0) || CATEGORIES.indexOf(o.category) < 0) throw 'bad amount or category';
-    const n = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
-    return [voidUndo(n)];
+    const closed = [];
+    const n = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '', closed });
+    // A purchase that looks like a funded goal's gets the same "pay it from the goal?" card as a wallet text.
+    const g = await matchGoal({ type: 'Expense', amount: amt }).catch(() => null);
+    if (g) await addMatch(n, g.id).catch(() => null);
+    return [voidUndo(n), ...closed.map((p) => restoreOf('plans', p))];
   }
   if (op === 'add_owed') {
     const amt = Number(o.amount);
@@ -132,17 +156,37 @@ async function one(o, ctx = {}) {
   if (op === 'set_balance') {
     if (ACCOUNTS.indexOf(o.account) < 0 || !(Number(o.amount) >= 0)) throw 'need account and amount';
     const before = (await select('accounts', eq('name', o.account)))[0];
+    const undo = before ? [restoreOf('accounts', before)] : [];
     // Maya's notifications show only the wallet, so a total Luis states (savings included) is set directly on the
     // account; logging it as a wallet reading would shift Maya by the difference instead of setting it.
     if (o.account === 'Maya') {
       await update('accounts', eq('name', 'Maya'), { balance: Math.round(Number(o.amount) * 100) / 100, as_of: new Date().toISOString(), updated_by: 'Moni' });
     } else {
-      await recordBalance(o.account, Number(o.amount), new Date(), 'told Moni');
+      const out = {};
+      await recordBalance(o.account, Number(o.amount), new Date(), 'told Moni', { noGap: true, out });
+      if (out.id) undo.push({ op: 'balance_drop', id: out.id });
     }
-    return before ? [restoreOf('accounts', before)] : [];
+    return undo;
   }
   if (op === 'set_holding') {
+    const sym = String(o.symbol || '').toUpperCase().trim();
+    const before = sym ? (await select('holdings', eq('symbol', sym)))[0] : null;
     await setHolding(o);
+    return [{ op: 'holding_restore', symbol: sym, row: before ? pick(before, HOLDING_COLS) : null }];
+  }
+  if (op === 'holding_restore') {
+    // Undo of set_holding: puts the row back as it was, or removes one that didn't exist.
+    const sym = String(o.symbol || '').toUpperCase().trim();
+    if (!sym) throw 'need symbol';
+    if (!o.row) { await remove('holdings', eq('symbol', sym)); return []; }
+    await insert('holdings', [{ ...pick(o.row, HOLDING_COLS.filter((c) => c in o.row)), symbol: sym }], { upsert: true, onConflict: 'symbol' });
+    return [];
+  }
+  if (op === 'balance_drop') {
+    // Undo of a balance told to Moni: removes only that reading.
+    const b = await select('balances', eq('id', Number(o.id)) + '&note=like.told*');
+    if (!b[0]) throw 'nothing to restore';
+    await remove('balances', eq('id', b[0].id));
     return [];
   }
   if (op === 'resolve_gap') {

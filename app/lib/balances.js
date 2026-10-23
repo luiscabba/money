@@ -31,16 +31,18 @@ async function updateNetWorth(account, balance, prevBalance, when) {
 }
 
 // Records a balance and checks it against the last one. Returns the gap id added, if any.
-export async function recordBalance(account, balance, when, note) {
+// opts.noGap: a balance Luis states isn't checked for missing money. opts.out.id receives the saved reading's id.
+export async function recordBalance(account, balance, when, note, opts = {}) {
   if (!account || !(balance >= 0)) return null;
   // For Maya, totals Luis told Moni aren't wallet readings, so the wallet's change is measured from the last real one.
   const prevRows = await select('balances', eq('account', account) + (account === 'Maya' ? '&note=not.like.told*' : '') + '&order=at.desc&limit=1');
   const prev = prevRows[0] || null;
-  await insert('balances', [{ at: when.toISOString(), account, balance, note: note || '' }]);
+  const [saved] = await insert('balances', [{ at: when.toISOString(), account, balance, note: note || '' }]);
+  if (opts.out && saved) opts.out.id = saved.id;
   // A reading older than the last one (notifications handled out of order) is kept but changes nothing.
   if (prev && when.getTime() <= new Date(prev.at).getTime()) return null;
   await updateNetWorth(account, balance, prev ? Number(prev.balance) : null, when);
-  if (!prev) return null;
+  if (!prev || opts.noGap) return null;
   const from = new Date(prev.at);
   const expected = Number(prev.balance) + (await trackedFlow(account, from, when));
   const gap = round2(balance - expected);

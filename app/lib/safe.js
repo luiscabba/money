@@ -17,7 +17,8 @@ export function safeToSpend(data, now) {
     if (k >= mk && k < tk) before += t.amount;
     if (k === tk) todaySpent += t.amount;
   });
-  const plans = (data.plans || []).filter((p) => p.status === 'planned' && p.date >= tk && p.date <= sk);
+  // Dated plans count in their week (from today on); a plan with no date counts every week until it's bought or removed.
+  const plans = (data.plans || []).filter((p) => p.status === 'planned' && (!p.date || (p.date >= tk && p.date <= sk)));
   const planned = plans.reduce((a, p) => a + p.amount, 0);
   const daysLeft = 7 - elapsed;
   const perDay = (week - before - planned) / daysLeft;

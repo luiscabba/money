@@ -63,7 +63,7 @@ export function netExpenses(data) {
     const exact = same.filter((e) => Math.abs(e.amount - r.amount) < 0.01).pop();
     if (exact) { cancelled.add(exact); return; }
     const last = same.pop();
-    if (last) extra.push({ ...r, type: 'Expense', amount: -r.amount, category: last.category, review: false });
+    if (last) extra.push({ ...r, type: 'Expense', amount: -r.amount, category: last.category, review: false, fromRefund: true });
   });
   const out = exp.filter((e) => !cancelled.has(e)).concat(extra).sort((a, b) => (a.date < b.date ? -1 : 1));
   netCache.set(data, out);

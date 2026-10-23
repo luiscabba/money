@@ -54,8 +54,9 @@ export function detectBills(data, now) {
       const monthly = !yearly && (isSub ? true : gaps.every((g) => g >= 24 && g <= 38));
       if (!monthly && !yearly) return;
       if ((today - last) / DAY > (yearly ? 400 : 45)) return; // stopped
-      const key = billKey(items[items.length - 1].merchant, tier.amount);
-      if (hidden.has(key)) return;
+      const lastTx = items[items.length - 1];
+      const key = billKey(lastTx.raw || lastTx.merchant, tier.amount);
+      if (hidden.has(key) || hidden.has(billKey(lastTx.merchant, tier.amount))) return;
       const next = yearly ? addMonths(last, 12) : addMonths(last, 1);
       const overdue = !yearly && (today - next) / DAY >= 1;
       bills.push({

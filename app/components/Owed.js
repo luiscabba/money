@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { peso } from '../lib/money';
-import { applyOps, toast } from './apply';
+import { change, toast } from './apply';
 
 // An incoming payment that looks like the repayment: same amount, after the IOU, from someone whose name matches.
 function matchFor(o, data) {
@@ -20,7 +20,7 @@ export default function Owed({ data }) {
   const total = open.reduce((a, o) => a + o.amount, 0);
   const settle = async (o, row) => {
     setBusy(o.id); setErr('');
-    const r = await applyOps([{ op: 'settle_owed', id: o.id, row: row || undefined }]);
+    const r = await change([{ op: 'settle_owed', id: o.id, row: row || undefined }], o.who + ' paid back');
     setBusy(''); if (!r.ok) setErr(r.error);
   };
   return (

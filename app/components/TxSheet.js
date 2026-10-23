@@ -64,7 +64,9 @@ export default function TxSheet() {
 
   useEffect(() => {
     const on = (e) => {
-      const x = e.detail;
+      const d = e.detail;
+      // A partial refund shows as negative spending in lists; the sheet opens the refund row itself.
+      const x = d && d.fromRefund ? { ...d, type: 'Refund', amount: -d.amount, fromRefund: false } : d;
       setT(x); setMode(''); setName(x.raw && x.merchant !== x.raw ? x.merchant : ''); setNote(x.note || '');
       setFix({ amount: String(x.amount), date: x.date.slice(0, 16), source: x.source || '' });
       setParts([{ amount: String(x.amount), category: x.category && x.category !== 'Other' ? x.category : 'Food & Drinks' }, { amount: '', category: 'Shopping' }]);
@@ -95,13 +97,13 @@ export default function TxSheet() {
         <div style={{ fontSize: 26, fontWeight: 800, whiteSpace: 'nowrap' }}>{peso(t.amount)}</div>
       </div>
 
-      {t.type === 'Expense' && (
+      {(t.type === 'Expense' || t.type === 'Transfer Out') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={label}>Category</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {CATS.map((c) => <button key={c} disabled={busy} className={'chip' + (t.category === c && !t.review ? ' on' : '')} onClick={() => run([{ op: 'recategorize', row: t.row, category: c, remember: person }], t.merchant + ' → ' + c)}>{c}</button>)}
-            <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, remember: person }], 'Not counted as spending')}>Not spending</button>
-            {!person && walletName && (WALLET_BRANDS.test(raw) || isAppWallet(raw)) && <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, note: walletName }], 'Moved to ' + walletName)}>Top-up to {walletName}</button>}
+            {CATS.map((c) => <button key={c} disabled={busy} className={'chip' + (t.category === c && !t.review ? ' on' : '')} onClick={() => run([{ op: 'recategorize', row: t.row, category: c, remember: person, asExpense: t.type !== 'Expense' }], t.merchant + ' → ' + c)}>{c}</button>)}
+            {t.type === 'Expense' && <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, remember: person }], 'Not counted as spending')}>Not spending</button>}
+            {t.type === 'Expense' && !person && walletName && (WALLET_BRANDS.test(raw) || isAppWallet(raw)) && <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, note: walletName }], 'Moved to ' + walletName)}>Top-up to {walletName}</button>}
           </div>
           {person && <span className="small muted">Remembered for this person from now on.</span>}
         </div>

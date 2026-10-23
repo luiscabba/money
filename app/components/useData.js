@@ -11,12 +11,22 @@ let lastText = null; // the last answer exactly as received
 let seq = 0; // newest request number; an older answer that arrives late is ignored
 let shown = 0; // request number of the data on screen
 
-// A forced load (after a change) always starts a fresh request, so it never reuses one that began before the change.
-// Several screens hear the same reload event, so forced loads within half a second share one request.
+// A forced load (after a change) never reuses a request that began before the change: if one is running, a fresh one
+// is queued behind it. Every screen hears the same reload event in the same moment, so those calls share one request,
+// and forced loads that pile up while one is queued share the queued one.
 let forcedAt = 0;
+let queued = null;
 function fetchShared(force) {
-  if (inflight && (!force || Date.now() - forcedAt < 500)) return inflight;
+  if (!force && inflight) return inflight;
+  if (force && inflight) {
+    if (Date.now() - forcedAt < 50) return inflight; // same reload event
+    if (!queued) queued = inflight.catch(() => null).then(() => { queued = null; forcedAt = Date.now(); return start(); });
+    return queued;
+  }
   if (force) forcedAt = Date.now();
+  return start();
+}
+function start() {
   const mine = ++seq;
   // Give up after 20s so a hung server never leaves the screen waiting; the saved copy stays up.
   const ctl = new AbortController();

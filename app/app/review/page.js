@@ -3,7 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
-import { openTx } from '../../components/apply';
+import { openTx, applyOps, toast } from '../../components/apply';
 import { peso, needsReview } from '../../lib/money';
 
 const CHOICES = ['Food & Drinks', 'Groceries', 'Shopping', 'Transport', 'Subscriptions', 'Bills & Phone', 'Entertainment', 'Fitness', 'Personal Care', 'Other'];
@@ -18,21 +18,29 @@ export default function Review() {
   if (!data) return <Shell tabs={false}><Loading error={error} /></Shell>;
   const items = needsReview(data);
 
-  const pick = async (t, cat) => {
-    setBusy(t.row);
-    setPicked((p) => ({ ...p, [t.row]: cat }));
-    const res = await fetch('/api/categorize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ row: t.row, category: cat, remember: remember[t.row] !== false }) }).catch(() => null);
-    const ok = res && res.ok && !(await res.json().catch(() => ({ error: 1 }))).error;
-    if (!ok) setPicked((p) => { const n = { ...p }; delete n[t.row]; return n; }); // didn't save: leave it open to tap again
-    setFailed((f) => ({ ...f, [t.row]: !ok }));
-    if (ok) window.dispatchEvent(new Event('money:reload'));
+  // Picks go through the change log, so the toast and Moni can undo them. "Other" is never saved as a rule.
+  const opOf = (t, cat) => {
+    const remem = remember[t.row] !== false && cat !== 'Other';
+    return cat === 'Transfer' ? { op: 'mark_transfer', row: t.row, remember: remem } : { op: 'recategorize', row: t.row, category: cat, remember: remem };
+  };
+  const send = async (list) => {
+    setBusy(list.length === 1 ? list[0][0].row : 'all');
+    setPicked((p) => { const n = { ...p }; list.forEach(([t, c]) => { n[t.row] = c; }); return n; });
+    const r = await applyOps(list.map(([t, c]) => opOf(t, c)));
+    const res = r.results.length === list.length ? r.results : list.map(() => ({ ok: false }));
+    // Ones that didn't save stay open to tap again.
+    setPicked((p) => { const n = { ...p }; list.forEach(([t], i) => { if (!res[i].ok) delete n[t.row]; }); return n; });
+    setFailed((f) => { const n = { ...f }; list.forEach(([t], i) => { n[t.row] = !res[i].ok; }); return n; });
+    const saved = list.filter((x, i) => res[i].ok);
+    if (saved.length) toast(saved.length === 1 ? saved[0][0].merchant + ' → ' + (saved[0][1] === 'Transfer' ? 'Not spending' : saved[0][1]) : saved.length + ' sorted', r.undo);
     setBusy(null);
   };
+  const pick = (t, cat) => send([[t, cat]]);
 
   const open = items.filter((t) => !picked[t.row]).length;
   const guessOf = (t) => (t.category && t.category !== 'Other' ? t.category : '');
   const guessed = items.filter((t) => !picked[t.row] && guessOf(t));
-  const acceptAll = async () => { for (const t of guessed) await pick(t, guessOf(t)); };
+  const acceptAll = () => send(guessed.map((t) => [t, guessOf(t)]));
 
   return (
     <Shell tabs={false} glow="c">
