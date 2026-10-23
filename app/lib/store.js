@@ -113,11 +113,17 @@ export async function goalMoves() {
   }));
 }
 
-export async function planGoals(nw) {
-  const [gs, mv, cap] = await Promise.all([goals(), goalMoves(), setting('goal_cap')]);
+// Goals may take whatever keeps the daily limit at or above the floor Luis set (₱600 a day by default).
+export async function planGoals(nw, bs) {
+  const [gs, mv, floorRaw, bud] = await Promise.all([goals(), goalMoves(), setting('goal_floor'), bs ? Promise.resolve(bs) : budgets()]);
   const [y, m, d] = manilaDay().split('-').map(Number);
+  const floor = floorRaw === null || floorRaw === undefined ? 600 : Number(floorRaw) || 0;
+  const total = bud.reduce((a, b) => a + b.budget, 0);
+  const cap = Math.max(0, Math.floor(total - floor * new Date(y, m, 0).getDate()));
   const maya = nw ? (nw.accounts.find((a) => a.name === 'Maya') || {}).php : null;
-  return { list: gs, moves: mv, plan: goalPlan({ goals: gs, moves: mv, now: { y, m, d }, cap: Number(cap) || 0, maya }) };
+  const plan = goalPlan({ goals: gs, moves: mv, now: { y, m, d }, cap, maya });
+  plan.floor = floor;
+  return { list: gs, moves: mv, plan };
 }
 
 export async function pendingMatches() {
@@ -142,7 +148,7 @@ export async function loadData(months = 13) {
   const [bs, tx, nw, hold, ih, ow, pl, gp, nt] = await Promise.all([
     budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes()
   ]);
-  const [g, pending] = await Promise.all([planGoals(nw), goalPending()]);
+  const [g, pending] = await Promise.all([planGoals(nw, bs), goalPending()]);
   const total = bs.reduce((a, b) => a + b.budget, 0);
   const [yy, mm] = manilaDay().split('-').map(Number);
   return {

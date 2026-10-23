@@ -58,7 +58,7 @@ export function goalPlan({ goals, moves, now, cap, maya }) {
     }
     const startLeft = Math.max(0, g.price - savedBefore(g, moves, now));
     const need = startLeft / monthsLeft(g.target, now);
-    const room = cap > 0 ? Math.max(0, cap - used) : need;
+    const room = cap === null || cap === undefined ? need : Math.max(0, cap - used);
     const setAside = Math.min(need, room);
     used += setAside;
     const fits = setAside >= need - 0.5;
@@ -67,7 +67,7 @@ export function goalPlan({ goals, moves, now, cap, maya }) {
     return {
       ...row, dated: true, need, setAside, eta,
       thisMonth: { due: Math.round(setAside), in: Math.round(inThisMonth), left: Math.max(0, Math.round(setAside - inThisMonth)) },
-      status: remaining <= 0 ? 'funded' : fits ? 'ontrack' : 'overcap',
+      status: remaining <= 0 ? 'funded' : fits ? 'ontrack' : setAside > 0 ? 'overcap' : 'waiting',
       suggest: fits ? null : eta
     };
   });

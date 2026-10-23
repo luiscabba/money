@@ -19,7 +19,8 @@ function Bar({ pct, h = 8, color = GOAL }) {
 }
 
 function Pill({ g }) {
-  const [c, bg, t] = g.status === 'overcap' ? ['#FFB27D', 'rgba(255,138,61,0.18)', 'Hits the cap']
+  const [c, bg, t] = g.status === 'overcap' ? ['#FFB27D', 'rgba(255,138,61,0.18)', 'Held back']
+    : g.status === 'waiting' ? ['var(--muted)', 'rgba(255,255,255,0.1)', 'Waiting']
     : g.status === 'funded' ? ['var(--bg)', GOAL, 'Ready']
     : g.status === 'nodate' ? ['var(--muted)', 'rgba(255,255,255,0.1)', 'No date']
     : g.behind > 0 ? ['#FFB27D', 'rgba(255,138,61,0.18)', peso(g.behind) + ' behind']
@@ -53,8 +54,9 @@ export default function Goals({ data, now }) {
         </div>
         <div className="row" style={{ fontSize: 12, color: 'var(--muted)' }}>
           <span><b style={{ color: GOAL }}>{peso(plan.tagged)}</b> for goals</span>
-          <span>{peso(plan.setAside)} a month · cap {peso(plan.cap)}</span>
+          <span>{peso(plan.setAside)} a month</span>
         </div>
+        <Floor plan={plan} />
         {plan.short > 0 && <div className="small" style={{ color: 'var(--over)' }}>Maya is {peso(plan.short)} short of what's tagged.</div>}
       </div>
 
@@ -76,13 +78,37 @@ export default function Goals({ data, now }) {
             <Bar pct={g.pct} />
             <span className="row" style={{ fontSize: 12, color: 'var(--muted)' }}>
               <span>{peso(g.saved)} of {peso(g.price)}</span>
-              <span>{g.dated ? peso(g.setAside) + '/mo · ' + dateLabel(g.target) : g.eta ? 'About ' + monthLabel(g.eta) : 'Weekly leftovers'}</span>
+              <span>{g.status === 'waiting' ? 'After the goals above' : g.dated ? peso(g.setAside) + '/mo · ' + dateLabel(g.target) : g.eta ? 'About ' + monthLabel(g.eta) : 'Weekly leftovers'}</span>
             </span>
           </button>
         </div>
       ))}
       <button className="btn" onClick={() => setView('new')}>New goal</button>
     </>
+  );
+}
+
+// The lowest the daily limit may go because of goals. Tap the amount to change it.
+function Floor({ plan }) {
+  const [edit, setEdit] = useState(false);
+  const [v, setV] = useState(String(plan.floor));
+  const save = async () => {
+    const n = Math.round(Number(String(v).replace(/[^\d.]/g, '')));
+    if (n >= 0 && n !== plan.floor) await change([{ op: 'goal_floor', amount: n }], 'Daily floor ' + peso(n));
+    setEdit(false);
+  };
+  return (
+    <div className="row" style={{ fontSize: 13, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+      <span className="muted">Daily limit never below</span>
+      {edit ? (
+        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input className="input" inputMode="numeric" autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} aria-label="Daily floor" style={{ width: 96, minHeight: 38, fontSize: 15, padding: '0 10px' }} />
+          <button className="chip" onClick={save} style={{ minHeight: 38, background: GOAL, borderColor: GOAL, color: 'var(--bg)' }}>Save</button>
+        </span>
+      ) : (
+        <button className="chip" onClick={() => { setV(String(plan.floor)); setEdit(true); }} style={{ minHeight: 34 }}>{peso(plan.floor)}</button>
+      )}
+    </div>
   );
 }
 
@@ -257,9 +283,14 @@ function GoalDetail({ g, data, now, onBack }) {
         )}
       </div>
 
+      {g.status === 'waiting' && (
+        <div className="small" style={{ padding: 16, borderRadius: 24, background: 'rgba(255,255,255,0.06)', border: '1px solid var(--line)', color: 'var(--muted)' }}>
+          Nothing set aside yet: the goals above it already take everything over your {peso(data.goalPlan.floor)} daily floor. It starts when one finishes, or lower the floor.
+        </div>
+      )}
       {g.status === 'overcap' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 16, borderRadius: 24, background: 'rgba(255,138,61,0.12)', border: '1px solid rgba(255,138,61,0.5)' }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#FFB27D' }}>Hits the {peso(data.goalPlan.cap)} cap</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#FFB27D' }}>Keeps your daily limit at {peso(data.goalPlan.floor)}</div>
           <div className="row" style={{ fontSize: 15, fontWeight: 800 }}><span>Per month</span><span>{peso(g.need)} → {peso(g.setAside)}</span></div>
           <div className="row" style={{ fontSize: 15, fontWeight: 800 }}><span>Ready</span><span>{dateLabel(g.target)} → {monthLabel(g.suggest)}</span></div>
           <button className="btn" disabled={busy} onClick={() => run([{ op: 'goal_edit', id: g.id, date: g.suggest }], 'Moved to ' + monthLabel(g.suggest))}>Move to {monthLabel(g.suggest)}</button>

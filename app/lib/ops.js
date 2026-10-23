@@ -314,12 +314,13 @@ async function one(o) {
     await update('settings', eq('key', 'goal_matches'), { value: pend[0].value.filter((m) => Number(m.row) !== Number(o.row)) });
     return [{ op: 'restore', table: 'settings', key: 'goal_matches', values: { value: pend[0].value } }];
   }
-  if (op === 'goal_cap') {
-    const cap = Math.round(Number(o.amount));
-    if (!(cap >= 0)) throw 'bad cap';
-    const before = await select('settings', eq('key', 'goal_cap'));
-    await insert('settings', [{ key: 'goal_cap', value: cap, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
-    return [{ op: 'restore', table: 'settings', key: 'goal_cap', values: { value: before[0] ? before[0].value : 8000 } }];
+  if (op === 'goal_floor') {
+    // The lowest the daily limit may go because of goals.
+    const floor = Math.round(Number(o.amount));
+    if (!(floor >= 0)) throw 'bad amount';
+    const before = await select('settings', eq('key', 'goal_floor'));
+    await insert('settings', [{ key: 'goal_floor', value: floor, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
+    return [{ op: 'restore', table: 'settings', key: 'goal_floor', values: { value: before[0] ? before[0].value : 600 } }];
   }
   if (op === 'restore') {
     // Undo: puts back values captured before a change. Only the app's own tables and columns.
