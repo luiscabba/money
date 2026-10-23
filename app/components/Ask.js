@@ -10,7 +10,19 @@ const KEY = 'askMoney.v2';
 const when = (d) => new Date(String(d).replace(' ', 'T')).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 // One line under each proposed change so he sees exactly what will be written.
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function goalDetail(a) {
+  const bits = [];
+  if (a.price) bits.push(peso(a.price));
+  if (a.amount) bits.push((a.amount < 0 ? 'take out ' : '') + peso(Math.abs(a.amount)));
+  if (a.date !== undefined) { const m = /^(\d{4})-(\d\d)/.exec(String(a.date)); bits.push(m ? 'ready ' + MON[Number(m[2]) - 1] + ' ' + m[1] : 'no date'); }
+  if (a.name && a.op === 'goal_edit') bits.push('renamed ' + a.name);
+  if (a.moves) bits.push(a.moves.map((x) => peso(x.amount)).join(' + '));
+  return bits.join(' · ');
+}
+
 function detail(a) {
+  if (String(a.op).startsWith('goal_')) return goalDetail(a);
   const bits = [];
   if (a.amount) bits.push(peso(a.amount));
   if (a.category) bits.push(a.category);
