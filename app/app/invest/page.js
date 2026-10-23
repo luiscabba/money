@@ -49,7 +49,7 @@ export default function Invest() {
           <div style={{ fontSize: 38, fontWeight: 800 }}>{ibkr ? usd(ibkr.balance) : '–'}</div>
           <div className="small muted">Add your positions to see your 70/20/10 mix and how it has grown.</div>
         </div>
-        <button className="btn" onClick={() => askMoney('Here are my IBKR positions: ')}>Add positions with Ask Money</button>
+        <button className="btn" onClick={() => askMoney('Here are my IBKR positions: ')}>Add positions with Moni</button>
       </Shell>
     );
   }

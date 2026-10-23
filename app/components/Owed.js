@@ -28,7 +28,7 @@ export default function Owed({ data }) {
       <div className="glass card strong" style={{ borderRadius: 24 }}>
         <div className="small muted">Owed to you</div>
         <div style={{ fontSize: 36, fontWeight: 800 }}>{peso(total)}</div>
-        <div style={{ fontSize: 13, color: '#8A93A6' }}>{open.length ? 'Not counted as spending' : 'Tell Ask Money when someone owes you'}</div>
+        <div style={{ fontSize: 13, color: '#8A93A6' }}>{open.length ? 'Not counted as spending' : 'Tell Moni when someone owes you'}</div>
       </div>
       {err && <div className="small" style={{ color: 'var(--over)' }}>{err}</div>}
       {open.map((o) => {

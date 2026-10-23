@@ -112,7 +112,7 @@ export default function Today() {
       {gaps.map((g) => (
         <button key={g.id} onClick={() => askMoney(`${peso(Math.abs(g.amount))} ${g.amount < 0 ? 'left' : 'came into'} ${g.account} between ${labelOf(g.from.slice(0, 10))} and ${labelOf(g.to.slice(0, 10))} without a transaction (gap ${g.id}). It was `)}
           className="press" style={{ textAlign: 'left', padding: '12px 16px', borderRadius: 20, border: '1px solid rgba(255,138,61,0.5)', background: 'rgba(255,138,61,0.14)', color: '#FFB27D', fontSize: 13, lineHeight: 1.45, cursor: 'pointer' }}>
-          <b>{g.account}: {peso(Math.abs(g.amount))} {g.amount < 0 ? 'not tracked' : 'extra'}</b> between {labelOf(g.from.slice(0, 10)).slice(5)} and {labelOf(g.to.slice(0, 10)).slice(5)}. Tap to tell Ask Money what it was.
+          <b>{g.account}: {peso(Math.abs(g.amount))} {g.amount < 0 ? 'not tracked' : 'extra'}</b> between {labelOf(g.from.slice(0, 10)).slice(5)} and {labelOf(g.to.slice(0, 10)).slice(5)}. Tap to tell Moni what it was.
         </button>
       ))}
 

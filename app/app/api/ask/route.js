@@ -20,7 +20,7 @@ export async function POST(req) {
     return NextResponse.json(out, { status: out.error ? 400 : 200 });
   }
 
-  if (!process.env.CLAUDE_API_KEY) return NextResponse.json({ reply: 'Add CLAUDE_API_KEY in Vercel to use Ask Money.', actions: [] });
+  if (!process.env.CLAUDE_API_KEY) return NextResponse.json({ reply: 'Add CLAUDE_API_KEY in Vercel to use Moni.', actions: [] });
   const data = useDb() ? await loadData(3) : await sheetGet({ months: 3 });
   const { system } = buildPrompt(data);
   const ctl = new AbortController();

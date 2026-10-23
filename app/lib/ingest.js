@@ -190,7 +190,7 @@ async function isDuplicate(tx) {
 }
 
 /* A wallet notification that matches a row already logged another way fills that row in instead of adding one:
- * a receipt row (within 90 minutes) or a row Luis told Ask Money about (Ref "ask-", within 36 hours).
+ * a receipt row (within 90 minutes) or a row Luis told Moni about (Ref "ask-", within 36 hours).
  * His description and category win; the wallet's source, ref and exact time are kept. */
 async function claimReceipt(tx) {
   if (tx.type !== 'Expense' && tx.type !== 'Transfer Out') return false;

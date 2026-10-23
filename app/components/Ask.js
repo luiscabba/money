@@ -4,6 +4,7 @@ import { applyOps, undoOps } from './apply';
 import useData from './useData';
 import { peso, needsReview, manilaNow } from '../lib/money';
 import { safeToSpend } from '../lib/safe';
+import Moni from './Moni';
 
 const KEY = 'askMoney.v2';
 const when = (d) => new Date(String(d).replace(' ', 'T')).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -171,23 +172,28 @@ export default function Ask({ button = true }) {
   return (
     <>
       {!open && button && (
-        <button onClick={() => setOpen(true)} aria-label="Ask Money" className="pop"
-          style={{ position: 'fixed', right: 'max(16px, calc(50vw - 244px))', bottom: 'calc(84px + env(safe-area-inset-bottom))', zIndex: 20, minHeight: 44, padding: '0 16px', borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontSize: 14, fontWeight: 800, boxShadow: '0 8px 30px rgba(0,0,0,0.45)', cursor: 'pointer' }}>
-          ✦ Ask
+        <button onClick={() => setOpen(true)} aria-label="Ask Moni" className="pop"
+          style={{ position: 'fixed', right: 'max(16px, calc(50vw - 244px))', bottom: 'calc(84px + env(safe-area-inset-bottom))', zIndex: 20, minHeight: 44, padding: '0 16px 0 6px', display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontSize: 14, fontWeight: 800, boxShadow: '0 8px 30px rgba(0,0,0,0.45)', cursor: 'pointer' }}>
+          <Moni size={32} />Ask Moni
         </button>
       )}
       {open && (
-        <div role="dialog" aria-label="Ask Money" className="sheetup" style={{ position: 'fixed', inset: 0, zIndex: 30, background: '#0B0D10', display: 'flex', justifyContent: 'center' }}>
+        <div role="dialog" aria-label="Ask Moni" className="sheetup" style={{ position: 'fixed', inset: 0, zIndex: 30, background: '#0B0D10', display: 'flex', justifyContent: 'center' }}>
           <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', padding: 'calc(14px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom))', gap: 10 }}>
             <div className="row">
-              <div style={{ fontSize: 22, fontWeight: 800 }}>Ask Money</div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>Ask Moni</div>
               <div className="row" style={{ gap: 8 }}>
                 {msgs.length > 0 && <button className="chip" onClick={() => setMsgs([])}>New chat</button>}
                 <button className="iconbtn" onClick={() => setOpen(false)} aria-label="Close">✕</button>
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
-              {msgs.length === 0 && <div className="small muted" style={{ marginTop: 8 }}>Ask about your money, or tell it what happened: "1,200 for 2 wigs on GCash, lunch 340 cash". You can also attach a receipt photo.</div>}
+              {msgs.length === 0 && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, textAlign: 'center' }}>
+                  <Moni size={120} label="Moni" />
+                  <div className="small muted" style={{ maxWidth: 300 }}>Ask about your money, or tell me what happened: "1,200 for 2 wigs on GCash, lunch 340 cash". You can also attach a receipt photo.</div>
+                </div>
+              )}
               {msgs.map((m, i) => m.role === 'user' ? (
                 <div key={i} className="rise" style={{ alignSelf: 'flex-end', maxWidth: '82%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   {m.rowLabel && <span style={{ fontSize: 11, color: '#8A93A6' }}>About {m.rowLabel}</span>}
@@ -197,7 +203,10 @@ export default function Ask({ button = true }) {
                 </div>
               ) : (
                 <div key={i} className="rise" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 15, lineHeight: 1.5, color: '#E4E7EE', whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    {i === last && <Moni size={30} state="done" />}
+                    <div style={{ fontSize: 15, lineHeight: 1.5, color: '#E4E7EE', whiteSpace: 'pre-wrap', paddingTop: i === last ? 4 : 0 }}>{m.content}</div>
+                  </div>
                   {(m.actions || []).length > 0 && (
                     <div className="glass" style={{ padding: 12, borderRadius: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {m.actions.map((a, k) => (
@@ -230,7 +239,7 @@ export default function Ask({ button = true }) {
                   )}
                 </div>
               ))}
-              {busy && <div className="typing rise" role="status" aria-label="Thinking"><span /><span /><span /></div>}
+              {busy && <div className="rise" role="status" aria-label="Moni is thinking" style={{ display: 'flex', gap: 10, alignItems: 'center' }}><Moni size={30} state="think" /><div className="typing"><span /><span /><span /></div></div>}
               <div ref={end} />
             </div>
             {msgs.length === 0 && (
@@ -249,7 +258,7 @@ export default function Ask({ button = true }) {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
               </button>
               <input ref={file} id="ask-photo" type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) { try { setPhoto(await shrink(f)); } catch (err) {} } }} />
-              <input id="ask-text" value={text} onChange={(e) => setText(e.target.value)} placeholder={row ? 'What about this one?' : 'Ask or tell Money anything'} aria-label="Message" style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', fontSize: 16, outline: 'none' }} />
+              <input id="ask-text" value={text} onChange={(e) => setText(e.target.value)} placeholder={row ? 'What about this one?' : 'Ask Moni'} aria-label="Message" style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', fontSize: 16, outline: 'none' }} />
               <button disabled={busy || (!text.trim() && !photo)} aria-label="Send" style={{ width: 44, height: 44, borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontWeight: 800, cursor: 'pointer', opacity: busy || (!text.trim() && !photo) ? 0.5 : 1 }}>↑</button>
             </form>
           </div>

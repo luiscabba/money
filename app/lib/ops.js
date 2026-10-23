@@ -1,4 +1,4 @@
-// Applies confirmed changes from the app and Ask Money. Each op is checked before it touches the database,
+// Applies confirmed changes from the app and Moni. Each op is checked before it touches the database,
 // and returns what undoing it needs. Ported from the Apps Script's applyOps_.
 import { select, insert, update, remove, eq } from './db';
 import { CATEGORIES, ACCOUNTS, newId, parseWhen } from './core';
@@ -128,7 +128,7 @@ async function one(o) {
   }
   if (op === 'set_balance') {
     if (ACCOUNTS.indexOf(o.account) < 0 || !(Number(o.amount) >= 0)) throw 'need account and amount';
-    await recordBalance(o.account, Number(o.amount), new Date(), 'told Ask Money');
+    await recordBalance(o.account, Number(o.amount), new Date(), 'told Moni');
     return [];
   }
   if (op === 'set_holding') {
@@ -193,7 +193,7 @@ async function one(o) {
     return undo;
   }
   if (op === 'remember') {
-    // A standing note for Ask Money ("the 500s to GCash are me moving money").
+    // A standing note for Moni ("the 500s to GCash are me moving money").
     const text = String(o.text || '').trim().slice(0, 200);
     if (!text) throw 'need text';
     const id = newId();

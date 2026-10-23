@@ -46,7 +46,7 @@ export async function recordBalance(account, balance, when, note) {
   await insert('gaps', [{ id, account, amount: gap, from_ts: from.toISOString(), to_ts: when.toISOString(), status: 'open' }]);
   const amt = '₱' + Math.round(Math.abs(gap)).toLocaleString('en-US');
   await push(account + ': ' + amt + (gap < 0 ? ' not tracked' : ' extra'),
-    (gap < 0 ? 'Money left ' : 'Money came into ') + account + " that the app didn't see. Tell Ask Money what it was.", '/');
+    (gap < 0 ? 'Money left ' : 'Money came into ') + account + " that the app didn't see. Tell Moni what it was.", '/');
   return id;
 }
 
