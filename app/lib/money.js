@@ -75,7 +75,8 @@ export function budgetGroups(data, y, m) {
 }
 
 export function needsReview(data) {
-  return (data.transactions || []).filter((t) => t.type === 'Expense' && (t.review || t.category === 'Other' || !t.category)).slice(-30).reverse();
+  // Flagged rows only. Picking a category (even Other) clears the flag, so a row never comes back once decided.
+  return (data.transactions || []).filter((t) => t.type === 'Expense' && (t.review || !t.category)).slice(-30).reverse();
 }
 
 export function streakUnder(data, now) {

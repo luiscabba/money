@@ -12,6 +12,7 @@ export default function Review() {
   const [picked, setPicked] = useState({});
   const [remember, setRemember] = useState({});
   const [busy, setBusy] = useState(null);
+  const [failed, setFailed] = useState({});
 
   if (!data) return <Shell tabs={false}><Loading error={error} /></Shell>;
   const items = needsReview(data);
@@ -19,7 +20,10 @@ export default function Review() {
   const pick = async (t, cat) => {
     setBusy(t.row);
     setPicked((p) => ({ ...p, [t.row]: cat }));
-    await fetch('/api/categorize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ row: t.row, category: cat, remember: remember[t.row] !== false }) });
+    const res = await fetch('/api/categorize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ row: t.row, category: cat, remember: remember[t.row] !== false }) }).catch(() => null);
+    const ok = res && res.ok && !(await res.json().catch(() => ({ error: 1 }))).error;
+    if (!ok) setPicked((p) => { const n = { ...p }; delete n[t.row]; return n; }); // didn't save: leave it open to tap again
+    setFailed((f) => ({ ...f, [t.row]: !ok }));
     setBusy(null);
   };
 
@@ -37,13 +41,14 @@ export default function Review() {
           <div className="row" style={{ alignItems: 'baseline' }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 800 }}>{t.merchant}</div>
-              <div className="small muted">{t.source} · {t.date.slice(0, 16)}</div>
+              {failed[t.row] && <div className="small" style={{ color: '#FF8A80' }}>Didn't save. Tap again.</div>}
+              <div className="small muted">{t.source} · {t.date.slice(0, 16)}{t.category && t.category !== 'Other' && !picked[t.row] ? ' · guess: ' + t.category : ''}</div>
             </div>
             <div style={{ fontSize: 22, fontWeight: 800 }}>{peso(t.amount)}</div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {(/^Send to /.test(t.merchant) ? CHOICES.concat('Transfer') : CHOICES).map((c) => (
-              <button key={c} className={'chip' + ((picked[t.row] || (t.category !== 'Other' ? t.category : '')) === c ? ' on' : '')} disabled={busy === t.row} onClick={() => pick(t, c)} aria-pressed={picked[t.row] === c}>{c === 'Transfer' ? 'Not spending' : c}</button>
+              <button key={c} className={'chip' + (picked[t.row] === c ? ' on' : '')} disabled={busy === t.row} onClick={() => pick(t, c)} aria-pressed={picked[t.row] === c}>{c === 'Transfer' ? 'Not spending' : c}</button>
             ))}
           </div>
           <label className="row small" style={{ justifyContent: 'flex-start', minHeight: 44, cursor: 'pointer' }}>
