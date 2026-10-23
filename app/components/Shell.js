@@ -38,7 +38,7 @@ export default function Shell({ children, glow = 'a', tabs = true }) {
 }
 
 export function Loading({ error }) {
-  if (error) return <div className="muted" style={{ padding: '40px 4px' }}>Could not reach the sheet ({error}). Pull to retry.</div>;
+  if (error) return <div className="muted" style={{ padding: '40px 4px' }}>Can't reach Money right now. Retrying&hellip;</div>;
   return (
     <div role="status" aria-label="Loading" style={{ flex: 1, minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <svg className="loader" width="84" height="84" viewBox="0 0 84 84" aria-hidden="true">

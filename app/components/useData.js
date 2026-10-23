@@ -15,20 +15,24 @@ export default function useData() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/data', { cache: 'no-store' });
+      // Give up after 20s so a hung server never leaves the screen waiting; the saved copy stays up.
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 20000);
+      const res = await fetch('/api/data', { cache: 'no-store', signal: ctl.signal }).finally(() => clearTimeout(t));
       if (res.status === 401) {
         try { localStorage.removeItem(STORE); } catch (e) {}
         window.location.href = '/login';
         return;
       }
       const j = await res.json();
-      if (j.error) { setError(j.error); return; }
+      if (j.error) { setError(j.error); if (!cache) setTimeout(load, 5000); return; }
       cache = j;
       setData(j);
       setError('');
       try { localStorage.setItem(STORE, JSON.stringify(j)); } catch (e) {}
     } catch (e) {
       setError('offline');
+      if (!cache) setTimeout(load, 5000); // nothing to show yet: keep trying
     }
   }, []);
 

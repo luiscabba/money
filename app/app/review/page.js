@@ -42,13 +42,13 @@ export default function Review() {
             <div style={{ fontSize: 22, fontWeight: 800 }}>{peso(t.amount)}</div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {CHOICES.map((c) => (
-              <button key={c} className={'chip' + ((picked[t.row] || (t.category !== 'Other' ? t.category : '')) === c ? ' on' : '')} disabled={busy === t.row} onClick={() => pick(t, c)} aria-pressed={picked[t.row] === c}>{c}</button>
+            {(/^Send to /.test(t.merchant) ? CHOICES.concat('Transfer') : CHOICES).map((c) => (
+              <button key={c} className={'chip' + ((picked[t.row] || (t.category !== 'Other' ? t.category : '')) === c ? ' on' : '')} disabled={busy === t.row} onClick={() => pick(t, c)} aria-pressed={picked[t.row] === c}>{c === 'Transfer' ? 'Not spending' : c}</button>
             ))}
           </div>
           <label className="row small" style={{ justifyContent: 'flex-start', minHeight: 44, cursor: 'pointer' }}>
             <input type="checkbox" checked={remember[t.row] !== false} onChange={(e) => setRemember((r) => ({ ...r, [t.row]: e.target.checked }))} style={{ width: 20, height: 20, accentColor: '#3DDC97' }} />
-            Always use this for {t.merchant}
+            {/^Send to /.test(t.merchant) ? 'Remember for ' + t.merchant.replace(/^Send to /, '') : 'Always use this for ' + t.merchant}
           </label>
         </div>
       ))}
