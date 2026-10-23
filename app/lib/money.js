@@ -21,8 +21,17 @@ export function totalBudget(data) {
   return (data.budgets || []).reduce((a, b) => a + b.budget, 0);
 }
 
+// What's left to spend after goal set-asides. They apply from the current month on, so past days keep the
+// allowance they had.
+export function spendBudget(data, y, m) {
+  const plan = data.goalPlan;
+  if (!plan || !plan.setAside) return totalBudget(data);
+  const now = manilaNow();
+  return totalBudget(data) - (y * 12 + m >= now.y * 12 + now.m ? plan.setAside : 0);
+}
+
 export function allowanceFor(data, y, m) {
-  return Math.round(totalBudget(data) / daysIn(y, m));
+  return Math.round(spendBudget(data, y, m) / daysIn(y, m));
 }
 
 export function expensesByDay(data, y, m) {
@@ -44,7 +53,8 @@ export const sum = (xs) => xs.reduce((a, t) => a + t.amount, 0);
 const netCache = new WeakMap();
 export function netExpenses(data) {
   if (netCache.has(data)) return netCache.get(data);
-  const all = data.transactions || [];
+  // A purchase paid from a goal is savings spent, not budget spent.
+  const all = (data.transactions || []).filter((t) => !t.goal);
   const exp = all.filter((t) => t.type === 'Expense');
   const cancelled = new Set();
   const extra = [];

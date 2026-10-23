@@ -1,5 +1,5 @@
 // Weekly bucket: the monthly total spread over weeks. Unspent days roll forward; resets Monday.
-import { netExpenses, totalBudget, dayKey } from './money';
+import { netExpenses, spendBudget, dayKey } from './money';
 
 const DAY = 86400000;
 const keyOf = (d) => dayKey(d.getFullYear(), d.getMonth() + 1, d.getDate());
@@ -9,7 +9,7 @@ export function safeToSpend(data, now) {
   const elapsed = (today.getDay() + 6) % 7;
   const mon = new Date(today.getTime() - elapsed * DAY);
   const sun = new Date(mon.getTime() + 6 * DAY);
-  const week = Math.round((totalBudget(data) * 12) / 52);
+  const week = Math.round((spendBudget(data, now.y, now.m) * 12) / 52);
   const tk = keyOf(today), mk = keyOf(mon), sk = keyOf(sun);
   let before = 0, todaySpent = 0;
   netExpenses(data).forEach((t) => {

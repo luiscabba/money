@@ -1,6 +1,7 @@
 // Reads the database into the same shape the Apps Script's doGet used to return, so the screens don't change.
 import { select, insert, update, remove, eq, inList } from './db';
 import { CATEGORIES, manila, manilaDay, round2 } from './core';
+import { goalPlan } from './goals';
 
 export async function names() {
   const out = {};
@@ -23,7 +24,7 @@ export function txOut(r, nick) {
   return {
     row: Number(r.n), date: manila(r.ts), type: r.type, amount: Number(r.amount),
     merchant: (nick && nick[raw.toLowerCase()]) || raw, raw, category: r.category, source: r.source, ref: r.ref,
-    review: !!r.review, note: r.note || ''
+    review: !!r.review, note: r.note || '', goal: r.goal_id || ''
   };
 }
 
@@ -99,14 +100,38 @@ export async function notes() {
   return (await select('notes', 'select=*&order=added_at')).filter((n) => n.note).map((n) => ({ id: n.id, text: n.note }));
 }
 
+export async function goals() {
+  return (await select('goals', 'select=*&status=neq.archived&order=priority,created_at')).map((g) => ({
+    id: g.id, name: g.name, price: Number(g.price) || 0, target: g.target_date || '', priority: g.priority,
+    status: g.status, created: g.created_at, closed: g.closed_at ? manilaDay(g.closed_at) : '', boughtRow: g.bought_row ? Number(g.bought_row) : null
+  }));
+}
+
+export async function goalMoves() {
+  return (await select('goal_moves', 'select=*&order=at')).map((m) => ({
+    id: Number(m.id), goal: m.goal_id, at: manilaDay(m.at), amount: Number(m.amount) || 0, kind: m.kind, row: m.tx_row ? Number(m.tx_row) : null, note: m.note || ''
+  }));
+}
+
+export async function planGoals(nw) {
+  const [gs, mv, cap] = await Promise.all([goals(), goalMoves(), setting('goal_cap')]);
+  const [y, m, d] = manilaDay().split('-').map(Number);
+  const maya = nw ? (nw.accounts.find((a) => a.name === 'Maya') || {}).php : null;
+  return { list: gs, moves: mv, plan: goalPlan({ goals: gs, moves: mv, now: { y, m, d }, cap: Number(cap) || 0, maya }) };
+}
+
 export async function loadData(months = 13) {
   const nick = await names();
   const [bs, tx, nw, hold, ih, ow, pl, gp, nt] = await Promise.all([
     budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes()
   ]);
+  const g = await planGoals(nw);
+  const total = bs.reduce((a, b) => a + b.budget, 0);
+  const [yy, mm] = manilaDay().split('-').map(Number);
   return {
     updatedAt: manila(new Date()).replace(' ', 'T') + '+08:00',
-    allowance: await allowance(bs),
+    allowance: Math.round((total - g.plan.setAside) / new Date(yy, mm, 0).getDate()),
+    goals: g.list, goalMoves: g.moves, goalPlan: g.plan,
     budgets: bs, transactions: tx, netWorth: nw, holdings: hold, investHistory: ih, owed: ow, plans: pl, gaps: gp, notes: nt,
     categories: CATEGORIES
   };
