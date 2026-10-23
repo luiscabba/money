@@ -275,3 +275,7 @@ function copyToDb() {
 function compareDb() {
   Logger.log(JSON.stringify(api_('get', '/api/admin/compare')).slice(0, 8000));
 }
+
+function selfTest() {
+  Logger.log(JSON.stringify(api_('post', '/api/admin/selftest')));
+}
