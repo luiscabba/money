@@ -1336,7 +1336,10 @@ function syncIbkrHistory_() {
   const key = (d) => (d instanceof Date ? Utilities.formatDate(d, TZ, 'yyyy-MM-dd') : String(d));
   const byDay = {};
   (sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues() : []).forEach((r) => { if (r[0]) byDay[key(r[0])] = [key(r[0]), r[1], r[2], r[3], r[4]]; });
-  Object.keys(nav).concat(Object.keys(flows)).forEach((d) => { if (!byDay[d]) byDay[d] = [d, '', '', '', '']; });
+  // Start at the first day with money in the account; the months before it are empty.
+  const first = Object.keys(nav).filter((d) => nav[d] > 0).concat(Object.keys(flows)).sort()[0] || '9999';
+  Object.keys(nav).concat(Object.keys(flows)).forEach((d) => { if (d >= first && !byDay[d]) byDay[d] = [d, '', '', '', '']; });
+  Object.keys(byDay).forEach((d) => { if (d < first) delete byDay[d]; });
   let dep = 0;
   const out = Object.keys(byDay).sort().map((d) => {
     const r = byDay[d];
