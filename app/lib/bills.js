@@ -28,7 +28,6 @@ export function detectBills(data, now) {
   });
   const bills = [];
   Object.values(groups).forEach((list) => {
-    const isSub = list.some((t) => t.category === 'Subscriptions' || t.category === 'Bills & Phone');
     // Split one merchant into price tiers (Apple ₱199 and ₱449 are separate plans).
     const tiers = [];
     list.forEach((t) => {
@@ -37,6 +36,10 @@ export function detectBills(data, now) {
     });
     tiers.forEach((tier) => {
       const items = tier.items.sort((a, b) => (a.date < b.date ? -1 : 1));
+      // Each plan is judged by its own latest charge, so moving a tier's charges out of Subscriptions
+      // (Apple game purchases, say) takes that tier off the list without touching the real subscriptions.
+      const latest = items[items.length - 1].category;
+      const isSub = latest === 'Subscriptions' || latest === 'Bills & Phone';
       if (items.length < 2 && !isSub) return;
       // Outside subscription categories, only steady same-price charges count (not rides or meals).
       if (!isSub && (items.length < 3 || items.some((t) => Math.abs(t.amount - tier.amount) / tier.amount > 0.03))) return;

@@ -7,14 +7,22 @@ let cache = null;
 let loadedAt = null; // when the server last answered (null = showing the saved copy)
 let inflight = null;
 
-function fetchShared() {
-  if (inflight) return inflight;
+let seq = 0; // newest request number; an older answer that arrives late is ignored
+let shown = 0; // request number of the data on screen
+
+// A forced load (after a change) always starts a fresh request, so it never reuses one that began before the change.
+// Several screens hear the same reload event, so forced loads within half a second share one request.
+let forcedAt = 0;
+function fetchShared(force) {
+  if (inflight && (!force || Date.now() - forcedAt < 500)) return inflight;
+  if (force) forcedAt = Date.now();
+  const mine = ++seq;
   // Give up after 20s so a hung server never leaves the screen waiting; the saved copy stays up.
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 20000);
   inflight = fetch('/api/data', { cache: 'no-store', signal: ctl.signal })
-    .then(async (res) => ({ status: res.status, json: res.status === 401 ? {} : await res.json() }))
-    .finally(() => { clearTimeout(t); inflight = null; });
+    .then(async (res) => ({ status: res.status, json: res.status === 401 ? {} : await res.json(), n: mine }))
+    .finally(() => { clearTimeout(t); if (seq === mine) inflight = null; });
   return inflight;
 }
 
@@ -31,7 +39,8 @@ export default function useData() {
   const load = useCallback(async (force) => {
     if (force !== true && loadedAt && Date.now() - loadedAt < 50000 && cache) { setData(cache); setAt(loadedAt); return; }
     try {
-      const r = await fetchShared();
+      const r = await fetchShared(force === true);
+      if (r.n < shown) return; // a newer answer is already on screen
       if (r.status === 401) {
         try { localStorage.removeItem(STORE); } catch (e) {}
         if (window.location.pathname !== '/login') window.location.href = '/login';
@@ -39,6 +48,7 @@ export default function useData() {
       }
       const j = r.json;
       if (j.error) { setError(j.error); if (!cache) setTimeout(() => load(true), 5000); return; }
+      shown = r.n;
       if (cache !== j) { cache = j; loadedAt = Date.now(); try { localStorage.setItem(STORE, JSON.stringify(j)); } catch (e) {} }
       setAt(loadedAt);
       setData(j);
