@@ -1,4 +1,5 @@
 'use client';
+import useToday from '../components/useToday';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Shell, { Loading } from '../components/Shell';
@@ -24,7 +25,7 @@ export default function Today() {
   const [closedSeen, setClosedSeen] = useState(true);
   const [tick, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick((x) => x + 1), 30000); return () => clearInterval(id); }, []);
-  const now = useMemo(() => manilaNow(), []);
+  const now = useToday();
   const [pick, setPick] = useState(null); // 'YYYY-MM-DD' or null for Recent
   const [panel, setPanel] = useState(null); // 'trend' | 'month' | null
   const [pushMsg, setPushMsg] = useState('');
@@ -103,7 +104,7 @@ export default function Today() {
 
       {close && (
         <div className="glass card strong" style={{ display: 'flex', flexDirection: 'column', gap: 6, borderRadius: 22 }}>
-          <div className="row"><b>{close.name} closed</b><button className="chip" style={{ minHeight: 30, padding: '0 10px', fontSize: 12 }} onClick={dismissClose}>Got it</button></div>
+          <div className="row"><b>{close.name} closed</b><button className="chip" style={{ minHeight: 44, padding: '0 14px', fontSize: 12 }} onClick={dismissClose}>Got it</button></div>
           <div style={{ fontSize: 24, fontWeight: 800, color: close.spent > close.budget ? 'var(--over)' : 'var(--under)' }}>{peso(close.spent)} <span className="small muted" style={{ fontWeight: 600 }}>of {peso(close.budget)}</span></div>
           <div className="small muted">{close.spent > close.budget ? peso(close.spent - close.budget) + ' over budget' : peso(close.budget - close.spent) + ' under budget'}{close.kept !== null ? ' · kept ' + close.kept + '% of income' : ''}{close.top ? ' · most on ' + close.top[0] + ' (' + peso(close.top[1]) + ')' : ''}</div>
         </div>

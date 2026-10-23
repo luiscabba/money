@@ -67,8 +67,26 @@ export default function Ask({ button = true }) {
   const [photo, setPhoto] = useState('');
   const end = useRef(null);
   const file = useRef(null);
+  const [streaming, setStreaming] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [pending, setPending] = useState('');
+  const gen = useRef(0); // bumped by New chat, so a reply still streaming stops writing into the cleared chat
+  const saving = useRef(false);
 
-  useEffect(() => { try { const s = localStorage.getItem(KEY); if (s) setMsgs(JSON.parse(s)); } catch (e) {} }, []);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(KEY);
+      // A change caught mid-save when the app closed is shown as failed so it can be retried.
+      if (s) setMsgs(JSON.parse(s).map((m) => (m.actions ? { ...m, actions: m.actions.map((a) => (a.state === 'saving' ? { ...a, state: 'failed', err: 'Not sure it saved. Check, then retry.' } : a)) } : m)));
+    } catch (e) {}
+    setReady(true);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
   useEffect(() => {
     const onAsk = (e) => {
       const d = e.detail;
@@ -80,24 +98,27 @@ export default function Ask({ button = true }) {
     return () => window.removeEventListener('money:ask', onAsk);
   }, []);
   useEffect(() => {
-    // Saved on the phone (photos left out) so a half-finished chat survives closing the app.
-    try { localStorage.setItem(KEY, JSON.stringify(msgs.slice(-30).map(({ image, ...m }) => (image ? { ...m, photo: true } : m)))); } catch (e) {}
+    // Saved on the phone (photos left out) so a half-finished chat survives closing the app; not on every streamed word.
+    if (ready && !streaming) { try { localStorage.setItem(KEY, JSON.stringify(msgs.slice(-30).map(({ image, ...m }) => (image ? { ...m, photo: true } : m)))); } catch (e) {} }
     if (end.current) end.current.scrollIntoView({ block: 'end' });
-  }, [msgs, open]);
+  }, [msgs, open, streaming, ready]);
 
   const send = async (q) => {
     const typed = (q !== undefined ? q : text).trim();
-    if ((!typed && !photo) || busy) return;
+    if ((!typed && !photo) || busy || streaming) return;
     const content = (row ? rowContext(row) : '') + typed;
     const mine = { role: 'user', content, shown: typed || 'Photo', rowLabel: row ? row.merchant + ' · ' + peso(row.amount) : '', image: photo || undefined };
     const next = [...msgs.map((m) => ({ ...m, replies: undefined })), mine];
-    setMsgs(next); setText(''); setPhoto(''); setRow(null); setBusy(true);
+    setMsgs(next); setText(''); setPhoto(''); setRow(null); setBusy(true); setStreaming(true);
+    const mineGen = gen.current, base = next.length;
+    // Writes the reply into its own slot, keeping any edits made to earlier messages meanwhile.
+    const put = (msg) => { if (gen.current === mineGen) setMsgs((cur) => [...cur.slice(0, base), msg]); };
     const payload = next.map((m, k) => ({ role: m.role, content: m.content, image: k === next.length - 1 ? m.image : undefined }));
     try {
       const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: payload }) });
       if ((res.headers.get('content-type') || '').includes('ndjson') && res.body) {
         let reply = '', actions = [], replies = [], mood = '';
-        const show = () => setMsgs([...next, { role: 'assistant', content: reply, actions: actions.map((a) => ({ ...a, on: true, state: 'pending' })), replies, mood }]);
+        const show = () => put({ role: 'assistant', content: reply, actions: actions.map((a) => ({ ...a, on: true, state: 'pending' })), replies, mood });
         const reader = res.body.getReader();
         const dec = new TextDecoder();
         let buf = '';
@@ -118,13 +139,19 @@ export default function Ask({ button = true }) {
         show();
       } else {
         const j = await res.json();
-        setMsgs([...next, { role: 'assistant', content: j.reply || j.error || 'No answer.', actions: (j.actions || []).map((a) => ({ ...a, on: true, state: 'pending' })) }]);
+        put({ role: 'assistant', content: j.reply || j.error || 'No answer.', actions: (j.actions || []).map((a) => ({ ...a, on: true, state: 'pending' })) });
       }
     } catch (e) {
-      setMsgs([...next, { role: 'assistant', content: "Couldn't reach Money. Try again." }]);
+      put({ role: 'assistant', content: "Couldn't reach Moni. Try again." });
     }
-    setBusy(false);
+    setBusy(false); setStreaming(false);
   };
+
+  // A send asked for before the saved chat loaded (the 8pm check-in) waits until it has.
+  useEffect(() => {
+    if (ready && pending) { const q = pending; setPending(''); send(q); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, pending]);
 
   useEffect(() => {
     // The 8pm check-in push opens Ask straight into a walk-through.
@@ -134,7 +161,7 @@ export default function Ask({ button = true }) {
       u.searchParams.delete('ask');
       window.history.replaceState(null, '', u.pathname + u.search);
       setOpen(true);
-      setTimeout(() => send('Walk me through what needs sorting today.'), 300);
+      setPending('Walk me through what needs sorting today.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -144,11 +171,14 @@ export default function Ask({ button = true }) {
 
   // Applies the ticked changes that haven't saved yet; a retry never re-sends ones that already saved.
   const confirm = async (i) => {
+    if (saving.current) return; // a fast double tap must not apply the same change twice
     const m = msgs[i];
     const todo = m.actions.map((a, k) => ({ a, k })).filter(({ a }) => a.on && a.state !== 'done');
     if (!todo.length) return;
+    saving.current = true;
     upd(i, (x) => ({ ...x, error: '', actions: x.actions.map((a) => (todo.some((t) => t.a === a) ? { ...a, state: 'saving' } : a)) }));
-    const r = await applyOps(todo.map(({ a }) => { const { label, on, state, ...op } = a; return op; }));
+    const r = await applyOps(todo.map(({ a }) => { const { label, on, state, err, ...op } = a; return op; }));
+    saving.current = false;
     upd(i, (x) => ({
       ...x,
       error: r.ok ? '' : r.error,
@@ -199,11 +229,11 @@ export default function Ask({ button = true }) {
             <div className="row">
               <div style={{ fontSize: 22, fontWeight: 800 }}>Ask Moni</div>
               <div className="row" style={{ gap: 8 }}>
-                {msgs.length > 0 && <button className="chip" onClick={() => setMsgs([])}>New chat</button>}
+                {msgs.length > 0 && <button className="chip" onClick={() => { gen.current++; setMsgs([]); setBusy(false); setStreaming(false); }}>New chat</button>}
                 <button className="iconbtn" onClick={() => setOpen(false)} aria-label="Close">✕</button>
               </div>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
+            <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
               {msgs.length === 0 && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, textAlign: 'center' }}>
                   <Moni size={120} mood={text.trim() ? 'listen' : ambient} label="Moni" />
@@ -244,7 +274,7 @@ export default function Ask({ button = true }) {
                             <button className="chip" style={{ minHeight: 42 }} onClick={() => skip(i)}>Skip</button>
                           </>
                         )}
-                        {(m.undo || []).length > 0 && <button className="chip" style={{ minHeight: 38 }} disabled={m.undoing} onClick={() => undo(i)}>{m.undoing ? 'Undoing…' : 'Undo'}</button>}
+                        {(m.undo || []).length > 0 && <button className="chip" style={{ minHeight: 44 }} disabled={m.undoing} onClick={() => undo(i)}>{m.undoing ? 'Undoing…' : 'Undo'}</button>}
                       </div>
                     </div>
                   )}
@@ -265,8 +295,8 @@ export default function Ask({ button = true }) {
             )}
             {(row || photo) && (
               <div className="row" style={{ gap: 8, justifyContent: 'flex-start', fontSize: 12, color: 'var(--muted)' }}>
-                {row && <span className="chip" style={{ minHeight: 30, fontSize: 12 }} onClick={() => setRow(null)}>About {row.merchant} · {peso(row.amount)} ✕</span>}
-                {photo && <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><img src={photo} alt="Photo to send" style={{ height: 36, borderRadius: 8 }} /><button className="chip" style={{ minHeight: 30, fontSize: 12 }} onClick={() => setPhoto('')}>Remove</button></span>}
+                {row && <button className="chip" style={{ minHeight: 44, fontSize: 12 }} onClick={() => setRow(null)} aria-label={'Stop asking about ' + row.merchant}>About {row.merchant} · {peso(row.amount)} ✕</button>}
+                {photo && <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><img src={photo} alt="Photo to send" style={{ height: 36, borderRadius: 8 }} /><button className="chip" style={{ minHeight: 44, fontSize: 12 }} onClick={() => setPhoto('')}>Remove</button></span>}
               </div>
             )}
             <form onSubmit={(e) => { e.preventDefault(); send(); }} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 6px 6px 6px', borderRadius: 28, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>
@@ -275,7 +305,7 @@ export default function Ask({ button = true }) {
               </button>
               <input ref={file} id="ask-photo" type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) { try { setPhoto(await shrink(f)); } catch (err) {} } }} />
               <input id="ask-text" value={text} onChange={(e) => setText(e.target.value)} placeholder={row ? 'What about this one?' : 'Ask Moni'} aria-label="Message" style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', fontSize: 16, outline: 'none' }} />
-              <button disabled={busy || (!text.trim() && !photo)} aria-label="Send" style={{ width: 44, height: 44, borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontWeight: 800, cursor: 'pointer', opacity: busy || (!text.trim() && !photo) ? 0.5 : 1 }}>↑</button>
+              <button disabled={busy || streaming || (!text.trim() && !photo)} aria-label="Send" style={{ width: 44, height: 44, borderRadius: 22, border: 0, background: 'var(--ink)', color: 'var(--bg)', fontWeight: 800, cursor: 'pointer', opacity: busy || streaming || (!text.trim() && !photo) ? 0.5 : 1 }}>↑</button>
             </form>
           </div>
         </div>

@@ -1,4 +1,5 @@
 'use client';
+import useToday from '../../components/useToday';
 import { useEffect, useMemo, useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import Ring from '../../components/Ring';
@@ -12,7 +13,7 @@ import { peso, MONTHS, manilaNow, daysIn, budgetGroups, totalBudget, monthSpent 
 
 export default function Budgets() {
   const { data, error } = useData();
-  const now = useMemo(() => manilaNow(), []);
+  const now = useToday();
   const [sel, setSel] = useState(0);
   const [tab, setTab] = useState('budgets');
   const [open, setOpen] = useState('');

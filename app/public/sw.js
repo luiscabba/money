@@ -23,10 +23,12 @@ async function savePage(req, res) {
 
 async function page(event) {
   const req = event.request;
-  const net = fetch(req).then((res) => { event.waitUntil(savePage(req, res)); return res; });
+  // Save the fresh page even when the saved copy was served first (waitUntil is registered right away).
+  const net = fetch(req);
+  event.waitUntil(net.then((res) => savePage(req, res)).catch(() => {}));
   const timeout = new Promise((r) => setTimeout(() => r(null), WAIT_MS));
   const first = await Promise.race([net.catch(() => null), timeout]);
-  if (first) return first;
+  if (first) return first.clone();
   const c = await caches.open(CACHE);
   const saved = (await c.match(req.url.split('?')[0])) || (await c.match(new URL('/', req.url).href));
   if (saved) return saved;

@@ -27,7 +27,7 @@ export default function Toast() {
     <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(140px + env(safe-area-inset-bottom))', zIndex: 60, display: 'flex', justifyContent: 'center', padding: '0 16px', pointerEvents: 'none' }}>
     <div key={t.id} role="status" className="rise" style={{ pointerEvents: 'auto', width: '100%', maxWidth: 488, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 16px', borderRadius: 18, background: '#F2F4F8', color: '#0B0D10', boxShadow: '0 10px 30px rgba(0,0,0,0.45)', fontSize: 14, fontWeight: 700 }}>
       <span style={{ flex: 1, minWidth: 0 }}>{t.text}</span>
-      {t.undo && t.undo.length > 0 && <button onClick={undo} style={{ minHeight: 36, padding: '0 14px', borderRadius: 18, border: 0, background: '#0B0D10', color: '#F2F4F8', fontWeight: 800, cursor: 'pointer' }}>Undo</button>}
+      {t.undo && t.undo.length > 0 && <button onClick={undo} style={{ minHeight: 44, padding: '0 16px', borderRadius: 18, border: 0, background: '#0B0D10', color: '#F2F4F8', fontWeight: 800, cursor: 'pointer' }}>Undo</button>}
     </div>
     </div>
   );

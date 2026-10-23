@@ -1,5 +1,6 @@
 import './globals.css';
 import SW from '../components/SW';
+import Overlays from '../components/Overlays';
 
 export const metadata = {
   title: 'Money',
@@ -23,6 +24,7 @@ export default function RootLayout({ children }) {
       <body>
         <SW />
         {children}
+        <Overlays />
       </body>
     </html>
   );

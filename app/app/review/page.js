@@ -25,6 +25,7 @@ export default function Review() {
     const ok = res && res.ok && !(await res.json().catch(() => ({ error: 1 }))).error;
     if (!ok) setPicked((p) => { const n = { ...p }; delete n[t.row]; return n; }); // didn't save: leave it open to tap again
     setFailed((f) => ({ ...f, [t.row]: !ok }));
+    if (ok) window.dispatchEvent(new Event('money:reload'));
     setBusy(null);
   };
 

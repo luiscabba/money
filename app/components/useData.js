@@ -7,6 +7,7 @@ let cache = null;
 let loadedAt = null; // when the server last answered (null = showing the saved copy)
 let inflight = null;
 
+let lastText = null; // the last answer exactly as received
 let seq = 0; // newest request number; an older answer that arrives late is ignored
 let shown = 0; // request number of the data on screen
 
@@ -21,7 +22,15 @@ function fetchShared(force) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 20000);
   inflight = fetch('/api/data', { cache: 'no-store', signal: ctl.signal })
-    .then(async (res) => ({ status: res.status, json: res.status === 401 ? {} : await res.json(), n: mine }))
+    .then(async (res) => {
+      // A newer deploy than the code running here: reload once to pick it up (not again in this tab session).
+      const build = res.headers.get('x-build');
+      if (build && process.env.NEXT_PUBLIC_BUILD && build !== process.env.NEXT_PUBLIC_BUILD && process.env.NEXT_PUBLIC_BUILD !== 'dev') {
+        try { if (sessionStorage.getItem('reloadedFor') !== build) { sessionStorage.setItem('reloadedFor', build); window.location.reload(); } } catch (e) {}
+      }
+      const text = res.status === 401 ? '{}' : await res.text();
+      return { status: res.status, text, json: null, n: mine };
+    })
     .finally(() => { clearTimeout(t); if (seq === mine) inflight = null; });
   return inflight;
 }
@@ -46,10 +55,13 @@ export default function useData() {
         if (window.location.pathname !== '/login') window.location.href = '/login';
         return;
       }
-      const j = r.json;
+      // Unchanged since the last answer: keep the same object, so screens don't redo their sums or re-render.
+      if (r.text === lastText && cache) { loadedAt = Date.now(); shown = r.n; setAt(loadedAt); setData(cache); setError(''); return; }
+      let j;
+      try { j = JSON.parse(r.text); } catch (e) { throw new Error('bad data'); }
       if (j.error) { setError(j.error); if (!cache) setTimeout(() => load(true), 5000); return; }
       shown = r.n;
-      if (cache !== j) { cache = j; loadedAt = Date.now(); try { localStorage.setItem(STORE, JSON.stringify(j)); } catch (e) {} }
+      cache = j; lastText = r.text; loadedAt = Date.now(); try { localStorage.setItem(STORE, r.text); } catch (e) {}
       setAt(loadedAt);
       setData(j);
       setError('');

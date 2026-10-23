@@ -37,7 +37,7 @@ export default function QuickAdd() {
           <input ref={input} id="qa-amount" aria-label="Amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
             style={{ flex: 1, minWidth: 0, border: 0, background: 'transparent', fontSize: 44, fontWeight: 800, outline: 'none' }} />
         </div>
-        <input id="qa-what" aria-label="What was it" className="input" style={{ minHeight: 46, fontSize: 15 }} value={what} onChange={(e) => setWhat(e.target.value)} placeholder="What was it? (optional)" />
+        <input id="qa-what" aria-label="What was it" className="input" style={{ minHeight: 46, fontSize: 16 }} value={what} onChange={(e) => setWhat(e.target.value)} placeholder="What was it? (optional)" />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{CATS.map((c) => <button type="button" key={c} className={'chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{c}</button>)}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{WALLETS.map((w) => <button type="button" key={w} className={'chip' + (wallet === w ? ' on' : '')} onClick={() => setWallet(w)}>{w}</button>)}</div>
         <button className="btn" disabled={busy || !(amt > 0)} type="submit">{busy ? 'Saving…' : amt > 0 ? 'Add ' + peso(amt) : 'Add'}</button>

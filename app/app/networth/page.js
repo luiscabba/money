@@ -1,4 +1,5 @@
 'use client';
+import useToday from '../../components/useToday';
 import { useMemo, useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
@@ -10,7 +11,7 @@ const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38
 
 export default function NetWorth() {
   const { data, error } = useData();
-  const now = useMemo(() => manilaNow(), []);
+  const now = useToday();
   const [sel, setSel] = useState(-1);
   const [span, setSpan] = useState('30');
   if (!data) return <Shell glow="a"><Loading error={error} /></Shell>;

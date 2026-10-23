@@ -110,7 +110,7 @@ export default function TxSheet() {
       <form onSubmit={(e) => { e.preventDefault(); run([{ op: 'rename', merchant: raw, name: name.trim() }], name.trim() ? 'Shows as ' + name.trim() : 'Nickname cleared'); }} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label htmlFor="tx-name" style={label}>{person ? 'Who is this?' : 'Nickname'}</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input id="tx-name" className="input" style={{ minHeight: 44, fontSize: 15 }} value={name} onChange={(e) => setName(e.target.value)} placeholder={person ? 'e.g. Juan (wigs)' : 'Name shown everywhere'} />
+          <input id="tx-name" className="input" style={{ minHeight: 44, fontSize: 16 }} value={name} onChange={(e) => setName(e.target.value)} placeholder={person ? 'e.g. Juan (wigs)' : 'Name shown everywhere'} />
           <button className="chip" disabled={busy} type="submit">Save</button>
         </div>
       </form>
@@ -118,7 +118,7 @@ export default function TxSheet() {
       <form onSubmit={(e) => { e.preventDefault(); run([{ op: 'set_note', row: t.row, note }], 'Note saved'); }} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label htmlFor="tx-note" style={label}>Note</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input id="tx-note" className="input" style={{ minHeight: 44, fontSize: 15 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was it for?" />
+          <input id="tx-note" className="input" style={{ minHeight: 44, fontSize: 16 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was it for?" />
           <button className="chip" disabled={busy} type="submit">Save</button>
         </div>
       </form>
@@ -132,8 +132,8 @@ export default function TxSheet() {
       {mode === 'fix' && (
         <form onSubmit={(e) => { e.preventDefault(); run([{ op: 'edit_tx', row: t.row, amount: Number(fix.amount), date: fix.date.replace('T', ' '), source: fix.source }], 'Saved'); }} className="rise" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.4fr)', gap: 8 }}>
-            <input aria-label="Amount" id="tx-amt" className="input" style={{ minHeight: 44, fontSize: 15 }} inputMode="decimal" value={fix.amount} onChange={(e) => setFix({ ...fix, amount: e.target.value })} />
-            <input aria-label="Date and time" id="tx-date" className="input" style={{ minHeight: 44, fontSize: 15 }} type="datetime-local" value={fix.date.replace(' ', 'T')} onChange={(e) => setFix({ ...fix, date: e.target.value })} />
+            <input aria-label="Amount" id="tx-amt" className="input" style={{ minHeight: 44, fontSize: 16 }} inputMode="decimal" value={fix.amount} onChange={(e) => setFix({ ...fix, amount: e.target.value })} />
+            <input aria-label="Date and time" id="tx-date" className="input" style={{ minHeight: 44, fontSize: 16 }} type="datetime-local" value={fix.date.replace(' ', 'T')} onChange={(e) => setFix({ ...fix, date: e.target.value })} />
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{sources.map((w) => <button type="button" key={w} className={'chip' + (fix.source === w ? ' on' : '')} onClick={() => setFix({ ...fix, source: w })}>{w}</button>)}</div>
           <button className="btn" disabled={busy || !(Number(fix.amount) > 0)} type="submit">Save</button>
@@ -144,7 +144,7 @@ export default function TxSheet() {
         <form onSubmit={(e) => { e.preventDefault(); run([{ op: 'split', row: t.row, parts: parts.map((p) => ({ amount: Number(p.amount), category: p.category })) }], 'Split into ' + parts.length); }} className="rise" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {parts.map((p, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <input aria-label={'Part ' + (i + 1) + ' amount'} id={'tx-part-' + i} className="input" style={{ minHeight: 44, fontSize: 15 }} inputMode="decimal" value={p.amount} placeholder="Amount"
+              <input aria-label={'Part ' + (i + 1) + ' amount'} id={'tx-part-' + i} className="input" style={{ minHeight: 44, fontSize: 16 }} inputMode="decimal" value={p.amount} placeholder="Amount"
                 onChange={(e) => setParts(parts.map((q, k) => (k === i ? { ...q, amount: e.target.value } : k === 1 && i === 0 && parts.length === 2 ? { ...q, amount: String(Math.max(0, t.amount - (Number(e.target.value) || 0))) } : q)))} />
               <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }}>{CATS.map((c) => <button type="button" key={c} className={'chip' + (p.category === c ? ' on' : '')} style={{ flexShrink: 0 }} onClick={() => setParts(parts.map((q, k) => (k === i ? { ...q, category: c } : q)))}>{c}</button>)}</div>
             </div>

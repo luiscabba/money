@@ -1,4 +1,5 @@
 'use client';
+import useToday from '../../components/useToday';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Ring from '../../components/Ring';
@@ -11,7 +12,7 @@ const arrow = (p) => (p === null ? 'new' : (p > 0 ? '▲ ' : p < 0 ? '▼ ' : ''
 
 export default function Recap() {
   const { data, error } = useData();
-  const now = useMemo(() => manilaNow(), []);
+  const now = useToday();
   const [i, setI] = useState(0);
   const [still, setStill] = useState(false);
   useEffect(() => { setStill(window.matchMedia('(prefers-reduced-motion: reduce)').matches); }, []);
@@ -42,7 +43,7 @@ export default function Recap() {
   return (
     <div style={{ position: 'relative', minHeight: '100dvh', overflow: 'hidden', background: c.bg, transition: 'background-color 0.6s ease' }}>
       <div aria-hidden="true" style={{ position: 'absolute', left: -240, top: -40, width: 700, height: 700, borderRadius: 350, background: `radial-gradient(closest-side, ${c.glow}, transparent)`, opacity: 0.8, pointerEvents: 'none' }} />
-      <button onClick={() => (last ? (window.location.href = '/') : setI(i + 1))} aria-label={last ? 'Done' : 'Next card'}
+      <button onClick={() => (last ? (window.location.href = '/') : setI(i + 1))}
         style={{ position: 'relative', display: 'flex', flexDirection: 'column', width: '100%', maxWidth: 520, margin: '0 auto', minHeight: '100dvh', padding: 'calc(16px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom))', border: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
         <div style={{ display: 'flex', gap: 4, width: '100%' }}>
           {cards.map((_, k) => (

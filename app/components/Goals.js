@@ -68,7 +68,7 @@ export default function Goals({ data, now }) {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <span style={{ width: 28, height: 28, borderRadius: 14, background: 'rgba(195,139,255,0.2)', color: GOAL, fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
             {i > 0 && (
-              <button onClick={() => move(i)} aria-label={'Move ' + g.name + ' up'} style={{ width: 32, height: 32, border: 0, borderRadius: 16, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={() => move(i)} aria-label={'Move ' + g.name + ' up'} style={{ width: 44, height: 44, border: 0, borderRadius: 22, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 9l4-4 4 4" fill="none" stroke="#B4BAC6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             )}
@@ -102,7 +102,7 @@ function Floor({ plan }) {
       <span className="muted">Daily limit never below</span>
       {edit ? (
         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input className="input" inputMode="numeric" autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} aria-label="Daily floor" style={{ width: 96, minHeight: 38, fontSize: 15, padding: '0 10px' }} />
+          <input className="input" inputMode="numeric" autoFocus value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} aria-label="Daily floor" style={{ width: 96, minHeight: 38, fontSize: 16, padding: '0 10px' }} />
           <button className="chip" onClick={save} style={{ minHeight: 38, background: GOAL, borderColor: GOAL, color: 'var(--bg)' }}>Save</button>
         </span>
       ) : (
@@ -199,7 +199,7 @@ function NewGoal({ data, now, onDone }) {
     const g = { id: 'new', name, price: p, target: target + '-28', priority: 1e6, status: 'active' };
     const pl = goalPlan({ goals: data.goals.concat([g]), moves: data.goalMoves, now, cap: data.goalPlan.cap });
     return Math.round((total - pl.setAside) / days);
-  }, [p, months, name]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p, months, name, data, before]); // eslint-disable-line react-hooks/exhaustive-deps
   const monthly = months && p ? p / months : 0;
   const save = async () => {
     setBusy(true);

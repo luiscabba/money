@@ -1,4 +1,5 @@
 'use client';
+import useToday from '../../components/useToday';
 import { useMemo, useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
@@ -10,7 +11,7 @@ import { weekTrend, monthTrend, paceLines } from '../../lib/trends';
 
 export default function Trends() {
   const { data, error } = useData();
-  const now = useMemo(() => manilaNow(), []);
+  const now = useToday();
   const [mode, setMode] = useState('month');
   if (!data) return <Shell glow="b"><Loading error={error} /></Shell>;
 
