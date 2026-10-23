@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { peso, MONTHS } from '../lib/money';
 import { weekTrend, monthTrend } from '../lib/trends';
 
-export function Delta({ p, suffix = '' }) {
-  if (p === null) return <span style={{ color: 'var(--over)' }}>new{suffix}</span>;
+// quiet: too early in the period for the percentage to mean much, so it is shown without alarm colour.
+export function Delta({ p, suffix = '', quiet = false }) {
+  if (p === null) return <span style={{ color: quiet ? 'var(--muted)' : 'var(--over)' }}>new{suffix}</span>;
   const up = p > 0;
-  return <span style={{ color: up ? 'var(--over)' : 'var(--under)' }}>{up ? '▲' : p < 0 ? '▼' : '='} {Math.abs(p)}%{suffix}</span>;
+  return <span style={{ color: quiet ? 'var(--muted)' : up ? 'var(--over)' : 'var(--under)' }}>{up ? '▲' : p < 0 ? '▼' : '='} {Math.abs(p)}%{suffix}</span>;
 }
 
 export default function TrendPills({ data, now }) {

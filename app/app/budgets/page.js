@@ -6,6 +6,7 @@ import useData from '../../components/useData';
 import Bills from '../../components/Bills';
 import Owed from '../../components/Owed';
 import Seg from '../../components/Seg';
+import { openTx } from '../../components/apply';
 import { peso, MONTHS, manilaNow, daysIn, budgetGroups, totalBudget, monthSpent } from '../../lib/money';
 
 export default function Budgets() {
@@ -13,6 +14,7 @@ export default function Budgets() {
   const now = useMemo(() => manilaNow(), []);
   const [sel, setSel] = useState(0);
   const [tab, setTab] = useState('budgets');
+  const [open, setOpen] = useState('');
   if (!data) return <Shell glow="b"><Loading error={error} /></Shell>;
 
   const n = daysIn(now.y, now.m);
@@ -21,7 +23,13 @@ export default function Budgets() {
   const total = totalBudget(data);
   const left = total - monthSpent(data, now.y, now.m);
   const cur = groups[sel] || groups[0];
-  const top = cur ? cur.items.slice().sort((a, b) => b.amount - a.amount).slice(0, 6) : [];
+  // Same merchant once, with how many times and the total.
+  const groupsOf = (items) => {
+    const by = {};
+    items.forEach((t) => { const g = (by[t.merchant] = by[t.merchant] || { merchant: t.merchant, amount: 0, n: 0 }); g.amount += t.amount; g.n++; });
+    return Object.values(by).sort((a, b) => b.amount - a.amount);
+  };
+  const top = cur ? groupsOf(cur.items) : [];
 
   return (
     <Shell glow="b">
@@ -50,7 +58,7 @@ export default function Budgets() {
                 <PaceTick pace={pace} />
               </div>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{g.name.replace('Subscriptions', 'Subs').replace('Food & Drinks', 'Food')}</span>
-              <span style={{ fontSize: 12, color: p > 1 ? 'var(--over)' : 'var(--muted)' }}>{Math.round(p * 100)}%</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: p > 1 ? 'var(--over)' : 'var(--muted)' }}>{g.budget - g.spent >= 0 ? peso(g.budget - g.spent) + ' left' : peso(g.spent - g.budget) + ' over'}</span>
             </button>
           );
         })}
@@ -63,7 +71,16 @@ export default function Budgets() {
             <span style={{ color: cur.spent > cur.budget ? 'var(--over)' : 'var(--under)' }}>{cur.spent > cur.budget ? peso(cur.spent - cur.budget) + ' over' : peso(cur.budget - cur.spent) + ' left'}</span>
           </div>
           {top.length === 0 && <div className="small muted">Nothing yet this month.</div>}
-          {top.map((t, i) => <div key={i} className="row small" style={{ color: '#D3D7E0' }}><span>{t.merchant}</span><span>{peso(t.amount)}</span></div>)}
+          {top.slice(0, 8).map((t) => (
+            <div key={t.merchant}>
+              <button onClick={() => (t.n > 1 ? setOpen(open === t.merchant ? '' : t.merchant) : openTx(cur.items.find((x) => x.merchant === t.merchant)))} aria-expanded={open === t.merchant} className="row small" style={{ width: '100%', border: 0, background: 'transparent', padding: '4px 0', color: '#D3D7E0', cursor: 'pointer', fontSize: 13 }}>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{t.merchant}{t.n > 1 && <span className="muted"> ×{t.n}</span>}</span><span>{peso(t.amount)}</span>
+              </button>
+              {open === t.merchant && t.n > 1 && cur.items.filter((x) => x.merchant === t.merchant).map((x, j) => (
+                <button key={j} onClick={() => openTx(x)} className="row" style={{ width: '100%', border: 0, background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#8A93A6', padding: '4px 0 4px 12px' }}><span>{new Date(x.date.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{x.note ? ' · ' + x.note : ''}</span><span>{peso(x.amount)}</span></button>
+              ))}
+            </div>
+          ))}
         </div>
       )}
       </>}

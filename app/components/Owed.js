@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { peso } from '../lib/money';
-import { applyOps } from './apply';
+import { applyOps, toast } from './apply';
 
 // An incoming payment that looks like the repayment: same amount, after the IOU, from someone whose name matches.
 function matchFor(o, data) {

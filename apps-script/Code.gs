@@ -53,6 +53,7 @@ function setup() {
   ScriptApp.newTrigger('dailyClose').timeBased().atHour(22).nearMinute(39).everyDays(1).inTimezone(TZ).create();
   setupRecap();
   setupIbkrTrigger();
+  setupCheckin();
   Logger.log('Setup done.');
 }
 
@@ -370,17 +371,20 @@ function transactions_(months) {
   const sh = SpreadsheetApp.getActive().getSheetByName('Transactions');
   const last = sh.getLastRow();
   if (last < 2) return [];
-  const vals = sh.getRange(2, 1, last - 1, 9).getValues();
+  const vals = sh.getRange(2, 1, last - 1, 10).getValues();
+  const nick = names_();
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - (months || 3));
   cutoff.setDate(1);
   const out = [];
   vals.forEach((r, i) => {
     const d = r[0] instanceof Date ? r[0] : new Date(String(r[0]).replace(' ', 'T') + '+08:00');
-    if (isNaN(d) || d < cutoff) return;
+    if (isNaN(d) || d < cutoff || r[1] === 'Void') return;
+    const raw = String(r[3]);
     out.push({
       row: i + 2, date: Utilities.formatDate(d, TZ, 'yyyy-MM-dd HH:mm:ss'), type: r[1], amount: Number(r[2]),
-      merchant: r[3], category: r[4], source: r[5], ref: String(r[6]).replace(/^'/, ''), review: String(r[8]) === 'yes'
+      merchant: nick[raw.toLowerCase()] || raw, raw: raw, category: r[4], source: r[5], ref: String(r[6]).replace(/^'/, ''),
+      review: String(r[8]) === 'yes', note: String(r[9] || '')
     });
   });
   return out;
@@ -521,6 +525,7 @@ function doGet(e) {
     owed: owed_(),
     plans: plans_(),
     gaps: gaps_(),
+    notes: notes_(),
     categories: CATEGORIES
   });
 }
@@ -606,6 +611,7 @@ function applyOps_(ops) {
   const results = [];
   (ops || []).forEach((o) => {
     try {
+      let undo = snapshot_(o);
       if (o.op === 'recategorize') {
         const row = Number(o.row);
         if (row < 2 || row > tx.getLastRow() || CATEGORIES.indexOf(o.category) < 0) throw 'bad row or category';
@@ -633,10 +639,14 @@ function applyOps_(ops) {
         if (!(amt > 0) || CATEGORIES.indexOf(o.category) < 0) throw 'bad amount or category';
         const d = o.date ? new Date(String(o.date).replace(' ', 'T') + (String(o.date).length <= 10 ? 'T12:00:00+08:00' : '+08:00')) : new Date();
         appendRow_({ date: isNaN(d) ? new Date() : d, type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId_() });
+        if (o.note) tx.getRange(tx.getLastRow(), 10).setValue(String(o.note).slice(0, 120));
+        undo = [voidOp_(tx.getLastRow())];
       } else if (o.op === 'add_owed') {
         const amt = Number(o.amount);
         if (!(amt > 0) || !o.who) throw 'need who and amount';
-        ensureSheet_('Owed', OWED_HEAD).appendRow([newId_(), String(o.who).slice(0, 40), amt, String(o.for || '').slice(0, 80), new Date(), 'open', '', '']);
+        const ow = ensureSheet_('Owed', OWED_HEAD);
+        ow.appendRow([newId_(), String(o.who).slice(0, 40), amt, String(o.for || '').slice(0, 80), new Date(), 'open', '', '']);
+        undo = [{ op: 'restore_cells', sheet: 'Owed', row: ow.getLastRow(), col: 6, values: [['removed']] }].concat(o.row ? snapshot_({ op: 'mark_transfer', row: o.row }) || [] : []);
         if (o.row) applyOps_([{ op: 'mark_transfer', row: o.row }]);
       } else if (o.op === 'settle_owed') {
         const r = findRow_('Owed', o.id);
@@ -651,7 +661,9 @@ function applyOps_(ops) {
       } else if (o.op === 'add_plan') {
         const amt = Number(o.amount);
         if (!(amt > 0) || !o.what) throw 'need what and amount';
-        ensureSheet_('Plans', PLAN_HEAD).appendRow([newId_(), String(o.what).slice(0, 60), amt, String(o.date || Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd')), 'planned', new Date()]);
+        const pl = ensureSheet_('Plans', PLAN_HEAD);
+        pl.appendRow([newId_(), String(o.what).slice(0, 60), amt, String(o.date || Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd')), 'planned', new Date()]);
+        undo = [{ op: 'restore_cells', sheet: 'Plans', row: pl.getLastRow(), col: 5, values: [['removed']] }];
       } else if (o.op === 'set_balance') {
         const acct = ['Maya', 'GCash', 'GoTyme', 'BPI'].indexOf(o.account) >= 0 ? o.account : '';
         if (!acct || !(Number(o.amount) >= 0)) throw 'need account and amount';
@@ -666,10 +678,70 @@ function applyOps_(ops) {
         const r = findRow_('Plans', o.id);
         if (!r) throw 'unknown plan';
         ss.getSheetByName('Plans').getRange(r, 5).setValue('removed');
+      } else if (o.op === 'rename') {
+        // A nickname for a merchant or person, shown everywhere instead of the raw text. Empty name clears it.
+        const raw = String(o.merchant || '').trim();
+        if (!raw) throw 'need merchant';
+        const sh = ensureSheet_('Names', NAMES_HEAD);
+        const rows = sh.getDataRange().getValues();
+        let r = 0;
+        for (let i = 1; i < rows.length; i++) if (String(rows[i][0]).toLowerCase() === raw.toLowerCase()) r = i + 1;
+        if (!r) { sh.appendRow([raw, '']); r = sh.getLastRow(); }
+        sh.getRange(r, 2).setValue(String(o.name || '').slice(0, 40));
+      } else if (o.op === 'set_note') {
+        const row = txRow_(tx, o.row);
+        tx.getRange(row, 10).setValue(String(o.note || '').slice(0, 120));
+      } else if (o.op === 'edit_tx') {
+        // Fix a wrong amount, date, wallet or merchant on one row.
+        const row = txRow_(tx, o.row);
+        if (o.amount !== undefined) { const a = Number(o.amount); if (!(a > 0)) throw 'bad amount'; tx.getRange(row, 3).setValue(a); }
+        if (o.date) { const d = new Date(String(o.date).replace(' ', 'T') + (String(o.date).length <= 10 ? 'T12:00:00+08:00' : '+08:00')); if (isNaN(d)) throw 'bad date'; tx.getRange(row, 1).setValue(d).setNumberFormat('yyyy-mm-dd hh:mm'); }
+        if (o.source) tx.getRange(row, 6).setValue(String(o.source).slice(0, 30));
+        if (o.merchant) tx.getRange(row, 4).setValue(String(o.merchant).slice(0, 60));
+      } else if (o.op === 'void') {
+        // Removes a duplicate or mistaken row from every total; the row stays in the sheet as Void.
+        const row = txRow_(tx, o.row);
+        tx.getRange(row, 2).setValue('Void');
+        tx.getRange(row, 9).setValue('');
+      } else if (o.op === 'split') {
+        // One payment, several categories: the row keeps the first part, the rest become new rows.
+        const row = txRow_(tx, o.row);
+        const parts = (o.parts || []).filter((x) => Number(x.amount) > 0 && CATEGORIES.indexOf(x.category) >= 0);
+        if (parts.length < 2) throw 'need two parts';
+        const r0 = tx.getRange(row, 1, 1, 10).getValues()[0];
+        const sum = parts.reduce((a, x) => a + Number(x.amount), 0);
+        if (Math.abs(sum - Number(r0[2])) > 0.5) throw 'parts must add up to ' + r0[2];
+        tx.getRange(row, 3).setValue(Number(parts[0].amount));
+        tx.getRange(row, 5).setValue(parts[0].category);
+        tx.getRange(row, 9).setValue('');
+        if (parts[0].note) tx.getRange(row, 10).setValue(String(parts[0].note).slice(0, 120));
+        const id = newId_();
+        parts.slice(1).forEach((x) => {
+          appendRow_({ date: r0[0], type: 'Expense', amount: Number(x.amount), merchant: String(x.merchant || r0[3]).slice(0, 60), category: x.category, source: r0[5], ref: 'split-' + id });
+          if (x.note) tx.getRange(tx.getLastRow(), 10).setValue(String(x.note).slice(0, 120));
+          undo.push(voidOp_(tx.getLastRow()));
+        });
+      } else if (o.op === 'remember') {
+        // A standing note for Ask Money ("the 500s to GCash are me moving money").
+        const text = String(o.text || '').trim().slice(0, 200);
+        if (!text) throw 'need text';
+        const sh = ensureSheet_('Notes', NOTES_HEAD);
+        sh.appendRow([newId_(), text, new Date()]);
+        undo = [{ op: 'restore_cells', sheet: 'Notes', row: sh.getLastRow(), col: 2, values: [['']] }];
+      } else if (o.op === 'forget') {
+        const r = findRow_('Notes', o.id);
+        if (!r) throw 'unknown note';
+        ss.getSheetByName('Notes').getRange(r, 2).setValue('');
+      } else if (o.op === 'restore_cells') {
+        // Undo: puts back cells captured before a change. Only the app's own tabs.
+        if (['Transactions', 'Budgets', 'Owed', 'Plans', 'Gaps', 'Names', 'Notes'].indexOf(o.sheet) < 0) throw 'not allowed';
+        const vals = o.values || [];
+        if (!vals.length || Number(o.row) < 2) throw 'bad restore';
+        ss.getSheetByName(o.sheet).getRange(Number(o.row), Number(o.col) || 1, vals.length, vals[0].length).setValues(vals);
       } else {
         throw 'unknown op';
       }
-      results.push({ ok: true });
+      results.push({ ok: true, undo: undo });
     } catch (err) {
       results.push({ ok: false, error: String(err) });
     }
@@ -750,15 +822,15 @@ function extractJson_(txt) {
 /* ---------- investments: holdings priced by GOOGLEFINANCE, daily snapshot ---------- */
 
 const QUOTES = { SPYL: 'LON:SPYL', GOOGL: 'NASDAQ:GOOGL', MSFT: 'NASDAQ:MSFT', AMZN: 'NASDAQ:AMZN', AAPL: 'NASDAQ:AAPL', NVDA: 'NASDAQ:NVDA', ETH: 'CURRENCY:ETHUSD', BTC: 'CURRENCY:BTCUSD' };
-const HOLD_HEAD = [['Symbol', 'Sleeve', 'Quantity', 'Avg cost (USD)', 'Price (USD)', 'Value (USD)', 'Cost (USD)', 'Gain (USD)', 'Quote']];
-const INV_HEAD = [['Date', 'Value (USD)', 'Cost (USD)', 'USD/PHP']];
+const HOLD_HEAD = [['Symbol', 'Sleeve', 'Quantity', 'Avg cost (USD)', 'Price (USD)', 'Value (USD)', 'Cost (USD)', 'Gain (USD)', 'Quote', 'Prev close (USD)']];
+const INV_HEAD = [['Date', 'Value (USD)', 'Cost (USD)', 'USD/PHP', 'Deposited (USD)']];
 
 function holdings_() {
   const sh = SpreadsheetApp.getActive().getSheetByName('Holdings');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues().filter((r) => r[0]).map((r) => ({
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 10).getValues().filter((r) => r[0]).map((r) => ({
     symbol: String(r[0]), sleeve: String(r[1]), qty: Number(r[2]) || 0, avg: Number(r[3]) || 0,
-    price: Number(r[4]) || 0, usd: Number(r[5]) || 0, cost: Number(r[6]) || 0
+    price: Number(r[4]) || 0, usd: Number(r[5]) || 0, cost: Number(r[6]) || 0, prev: Number(r[9]) || Number(r[4]) || 0
   }));
 }
 
@@ -780,6 +852,7 @@ function setHolding_(o) {
   sh.getRange(r, 5, 1, 4).setFormulas([[
     '=IF(I' + r + '="",1,IFERROR(GOOGLEFINANCE(I' + r + '),D' + r + '))', '=C' + r + '*E' + r, '=C' + r + '*D' + r, '=F' + r + '-G' + r
   ]]);
+  sh.getRange(r, 10).setFormula(prevCloseFormula_(r));
 }
 
 // Daily: record the portfolio and keep IBKR's net worth line current.
@@ -790,7 +863,7 @@ function investSnapshot_() {
   const value = h.reduce((a, x) => a + x.usd, 0), cost = h.reduce((a, x) => a + x.cost, 0);
   const ss = SpreadsheetApp.getActive();
   const fx = Number(ss.getSheetByName('Net Worth').getRange('H2').getValue()) || '';
-  ensureSheet_('Invest History', INV_HEAD).appendRow([Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), Math.round(value * 100) / 100, Math.round(cost * 100) / 100, fx]);
+  upsertInvestDay_(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), { value: Math.round(value * 100) / 100, cost: Math.round(cost * 100) / 100, fx: fx });
   const nw = ss.getSheetByName('Net Worth');
   const names = nw.getRange('A2:A6').getValues();
   for (let i = 0; i < names.length; i++) if (names[i][0] === 'IBKR') { nw.getRange(i + 2, 3).setValue(Math.round(value * 100) / 100); nw.getRange(i + 2, 5).setValue(new Date()); }
@@ -799,9 +872,32 @@ function investSnapshot_() {
 function investHistory_() {
   const sh = SpreadsheetApp.getActive().getSheetByName('Invest History');
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues().filter((r) => r[0]).map((r) => ({
-    date: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, 'yyyy-MM-dd') : String(r[0]), value: Number(r[1]) || 0, cost: Number(r[2]) || 0
-  }));
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues().filter((r) => r[0]).map((r) => ({
+    date: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, 'yyyy-MM-dd') : String(r[0]), value: Number(r[1]) || 0, cost: Number(r[2]) || 0,
+    deposited: r[4] === '' ? null : Number(r[4])
+  })).sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+// Writes one day into Invest History, creating or updating its row. Fields left undefined keep what is there;
+// a day with no deposit figure carries the last known total forward.
+function upsertInvestDay_(date, f) {
+  const sh = ensureSheet_('Invest History', INV_HEAD);
+  if (sh.getRange(1, 5).getValue() !== 'Deposited (USD)') sh.getRange(1, 5).setValue('Deposited (USD)');
+  const rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues() : [];
+  const key = (d) => (d instanceof Date ? Utilities.formatDate(d, TZ, 'yyyy-MM-dd') : String(d));
+  let at = rows.findIndex((r) => key(r[0]) === date);
+  let lastDep = '';
+  rows.forEach((r) => { if (key(r[0]) < date && r[4] !== '') lastDep = r[4]; });
+  const cur = at >= 0 ? rows[at] : [date, '', '', '', ''];
+  const next = [date, f.value !== undefined ? f.value : cur[1], f.cost !== undefined ? f.cost : cur[2], f.fx !== undefined ? f.fx : cur[3],
+    f.deposited !== undefined ? f.deposited : (cur[4] !== '' ? cur[4] : lastDep)];
+  if (at >= 0) sh.getRange(at + 2, 1, 1, 5).setValues([next]);
+  else sh.appendRow(next);
+}
+
+// Yesterday's close for the day-change figure; falls back to the current price.
+function prevCloseFormula_(r) {
+  return '=IF(I' + r + '="",1,IFERROR(INDEX(GOOGLEFINANCE(I' + r + ',"closeyest")),E' + r + '))';
 }
 
 /* ---------- balances from notifications, and the missing-money check ---------- */
@@ -1011,7 +1107,8 @@ function syncIBKR_() {
 
   const ss = SpreadsheetApp.getActive();
   const h = ss.getSheetByName('Holdings');
-  h.getRange('A2:I200').clearContent();
+  h.getRange('A2:J200').clearContent();
+  if (h.getRange(1, 10).getValue() !== 'Prev close (USD)') h.getRange(1, 10).setValue('Prev close (USD)');
   if (rows.length) {
     const n = rows.length;
     h.getRange(2, 1, n, 4).setValues(rows.map((r) => [r.sym, r.sleeve, r.qty, r.cost]));
@@ -1024,11 +1121,16 @@ function syncIBKR_() {
         : '=LET(g,IFERROR(GOOGLEFINANCE(I' + k + '),0),m,' + r.mark + ',IF(ABS(g/m-1)<0.2,g,m))';
       return [price, '=C' + k + '*E' + k, '=C' + k + '*D' + k, '=F' + k + '-G' + k];
     }));
+    h.getRange(2, 10, n, 1).setFormulas(rows.map((r, i) => [r.quote === '' ? '=1' : prevCloseFormula_(i + 2)]));
   }
 
   const nw = ss.getSheetByName('Net Worth');
   nw.getRange('C6').setValue(Math.round(nav * 100) / 100);
   nw.getRange('E6').setValue(Utilities.formatDate(new Date(), IBKR_TZ_, 'yyyy-MM-dd'));
+  p.setProperty('IBKR_USD_TO_BASE', String(usdToBase));
+  if (p.getProperty('IBKR_FLEX_HISTORY')) {
+    try { syncIbkrHistory_(); } catch (e) { Logger.log('IBKR history: ' + e); }
+  }
 }
 
 function flexFetch_(token, query) {
@@ -1200,4 +1302,132 @@ function retryErrors() {
   }
   if (added.length) notifyNew_(added);
   Logger.log('Retried, added ' + added.length);
+}
+
+
+/* ---------- IBKR history: daily account value and deposits for the Invest chart ----------
+ * Uses a second Flex query (IBKR_FLEX_HISTORY): NAV in Base by day + Deposits & Withdrawals, last 365 days.
+ * Runs inside syncIBKR each morning; run backfillIBKR once by hand to fill the past.
+ */
+function backfillIBKR() { syncIbkrHistory_(); Logger.log('History filled.'); }
+
+function syncIbkrHistory_() {
+  const p = PropertiesService.getScriptProperties();
+  const token = p.getProperty('IBKR_FLEX_TOKEN'), query = p.getProperty('IBKR_FLEX_HISTORY');
+  if (!token || !query) throw new Error('Add IBKR_FLEX_HISTORY in Script properties');
+  const usdToBase = Number(p.getProperty('IBKR_USD_TO_BASE')) || 1;
+  const st = XmlService.parse(flexFetch_(token, query)).getRootElement().getChild('FlexStatements').getChild('FlexStatement');
+  const day = (s) => { const d = String(s || '').replace(/[^0-9]/g, '').slice(0, 8); return d.length === 8 ? d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8) : ''; };
+
+  const nav = {};
+  kids_(st, 'EquitySummaryInBase', 'EquitySummaryByReportDateInBase').forEach((e) => {
+    const d = day(attr_(e, 'reportDate')); if (d) nav[d] = Number(attr_(e, 'total')) / usdToBase;
+  });
+  const flows = {};
+  kids_(st, 'CashTransactions', 'CashTransaction').forEach((e) => {
+    if (!/deposit|withdraw/i.test(attr_(e, 'type'))) return;
+    const d = day(attr_(e, 'dateTime') || attr_(e, 'reportDate') || attr_(e, 'settleDate')); if (!d) return;
+    const amt = Number(attr_(e, 'amount')) * (Number(attr_(e, 'fxRateToBase')) || 1) / usdToBase;
+    flows[d] = (flows[d] || 0) + amt;
+  });
+  // Merge into the sheet in one write: IBKR's value and deposits win; the app's own cost and FX columns are kept.
+  const sh = ensureSheet_('Invest History', INV_HEAD);
+  if (sh.getRange(1, 5).getValue() !== 'Deposited (USD)') sh.getRange(1, 5).setValue('Deposited (USD)');
+  const key = (d) => (d instanceof Date ? Utilities.formatDate(d, TZ, 'yyyy-MM-dd') : String(d));
+  const byDay = {};
+  (sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues() : []).forEach((r) => { if (r[0]) byDay[key(r[0])] = [key(r[0]), r[1], r[2], r[3], r[4]]; });
+  Object.keys(nav).concat(Object.keys(flows)).forEach((d) => { if (!byDay[d]) byDay[d] = [d, '', '', '', '']; });
+  let dep = 0;
+  const out = Object.keys(byDay).sort().map((d) => {
+    const r = byDay[d];
+    dep += flows[d] || 0;
+    if (nav[d] > 0) r[1] = Math.round(nav[d] * 100) / 100;
+    r[4] = Math.round(dep * 100) / 100;
+    return r;
+  });
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 5).clearContent();
+  if (out.length) sh.getRange(2, 1, out.length, 5).setValues(out);
+}
+
+
+/* ---------- names, notes, undo snapshots ---------- */
+
+const NAMES_HEAD = [['Merchant', 'Nickname']];
+const NOTES_HEAD = [['ID', 'Note', 'Added']];
+
+function names_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Names');
+  const out = {};
+  if (!sh || sh.getLastRow() < 2) return out;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().forEach((r) => { if (r[0] && r[1]) out[String(r[0]).toLowerCase()] = String(r[1]); });
+  return out;
+}
+
+function notes_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Notes');
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues().filter((r) => r[0] && r[1]).map((r) => ({ id: String(r[0]), text: String(r[1]) }));
+}
+
+function txRow_(tx, row) {
+  const r = Number(row);
+  if (!(r >= 2 && r <= tx.getLastRow())) throw 'bad row';
+  return r;
+}
+
+function voidOp_(row) {
+  return { op: 'restore_cells', sheet: 'Transactions', row: row, col: 2, values: [['Void']] };
+}
+
+// Cells as they are now, in a form that can be written back (dates as local text, refs kept as text).
+function cellsNow_(sheet, row, col, n) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(sheet);
+  if (!sh || row < 2 || row > sh.getLastRow()) return null;
+  const vals = sh.getRange(row, col, 1, n).getValues()[0].map((v) => (v instanceof Date ? Utilities.formatDate(v, TZ, 'yyyy-MM-dd HH:mm') : v));
+  return { op: 'restore_cells', sheet: sheet, row: row, col: col, values: [vals] };
+}
+
+// What undoing an op needs, captured before the op runs. Ops that add rows set their own undo after.
+function snapshot_(o) {
+  const row = Number(o.row);
+  const out = [];
+  const push = (x) => { if (x) out.push(x); };
+  if (['recategorize', 'mark_transfer', 'set_note', 'edit_tx', 'void', 'split'].indexOf(o.op) >= 0) push(cellsNow_('Transactions', row, 1, 10));
+  if (o.op === 'settle_owed') { push(cellsNow_('Owed', findRow_('Owed', o.id), 1, 8)); if (o.row) push(cellsNow_('Transactions', row, 1, 10)); }
+  if (o.op === 'set_budget') {
+    const sh = SpreadsheetApp.getActive().getSheetByName('Budgets');
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) if (rows[i][0] === o.name) push(cellsNow_('Budgets', i + 1, 2, 1));
+  }
+  if (o.op === 'remove_plan') push(cellsNow_('Plans', findRow_('Plans', o.id), 5, 1));
+  if (o.op === 'resolve_gap') push(cellsNow_('Gaps', findRow_('Gaps', o.id), 7, 1));
+  if (o.op === 'forget') push(cellsNow_('Notes', findRow_('Notes', o.id), 2, 1));
+  if (o.op === 'rename') {
+    const sh = SpreadsheetApp.getActive().getSheetByName('Names');
+    if (sh) { const rows = sh.getDataRange().getValues(); for (let i = 1; i < rows.length; i++) if (String(rows[i][0]).toLowerCase() === String(o.merchant || '').toLowerCase()) push(cellsNow_('Names', i + 1, 2, 1)); }
+    if (!out.length) out.push({ op: 'rename', merchant: o.merchant, name: '' });
+  }
+  return out;
+}
+
+
+/* ---------- 8pm check-in: one push, only when something needs Luis ---------- */
+
+function setupCheckin() {
+  ScriptApp.getProjectTriggers().filter((t) => t.getHandlerFunction() === 'eveningCheck').forEach((t) => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('eveningCheck').timeBased().everyDays(1).atHour(20).inTimezone(TZ).create();
+}
+
+function eveningCheck() {
+  const rows = transactions_(1);
+  const review = rows.filter((r) => r.type === 'Expense' && (r.review || !r.category)).length;
+  const gaps = gaps_().length;
+  const today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  const over = spentOn_(today, rows) - allowance_();
+  const parts = [];
+  if (review) parts.push(review + (review === 1 ? ' payment' : ' payments') + ' to explain');
+  if (gaps) parts.push(gaps + ' untracked ' + (gaps === 1 ? 'amount' : 'amounts'));
+  if (over > 0) parts.push('₱' + Math.round(over).toLocaleString('en-US') + ' over today');
+  if (!parts.length) return;
+  push_('Money check-in', parts.join(' · ') + '. Tap to sort it out.', '/?ask=checkin');
 }

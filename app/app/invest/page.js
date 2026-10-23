@@ -1,32 +1,22 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
 import Seg from '../../components/Seg';
 import CountUp from '../../components/CountUp';
-import { peso, usd, manilaNow, pad } from '../../lib/money';
+import InvestChart from '../../components/InvestChart';
+import { peso, usd } from '../../lib/money';
 
 const SLEEVES = [
   { key: 'Beta', target: 0.7, color: '#4D7CFF', r: 56, picks: ['SPYL'] },
   { key: 'Alpha', target: 0.2, color: '#FF8A3D', r: 41, picks: ['GOOGL', 'MSFT'] },
   { key: 'Asymmetric', target: 0.1, color: '#C38BFF', r: 26, picks: ['ETH'] }
 ];
-const AMOUNTS = [5000, 10000, 20000];
 const askMoney = (text) => window.dispatchEvent(new CustomEvent('money:ask', { detail: text }));
-
-// Splits a new deposit so sleeves move toward 70/20/10 (money only goes to sleeves below target).
-function splitDeposit(values, total, depositUsd) {
-  const after = total + depositUsd;
-  const need = SLEEVES.map((s) => Math.max(0, s.target * after - (values[s.key] || 0)));
-  const sum = need.reduce((a, b) => a + b, 0) || 1;
-  return SLEEVES.map((s, i) => ({ ...s, usd: (need[i] / sum) * depositUsd }));
-}
 
 export default function Invest() {
   const { data, error } = useData();
-  const now = useMemo(() => manilaNow(), []);
   const [cur, setCur] = useState('usd');
-  const [dep, setDep] = useState(10000);
   if (!data) return <Shell glow="d"><Loading error={error} /></Shell>;
 
   const fx = (data.netWorth || {}).usdphp || 0;
@@ -36,14 +26,18 @@ export default function Invest() {
   const total = hold.reduce((a, h) => a + h.usd, 0);
   const value = invested.reduce((a, h) => a + h.usd, 0);
   const cost = invested.reduce((a, h) => a + h.cost, 0);
-  const gain = value - cost;
   const cash = total - value;
   const bySleeve = {};
   invested.forEach((h) => { bySleeve[h.sleeve] = (bySleeve[h.sleeve] || 0) + h.usd; });
-  const split = fx ? splitDeposit(bySleeve, value, dep / fx) : [];
-  const prefix = now.y + '-' + pad(now.m) + '-';
-  const depositsThisMonth = (data.transactions || []).filter((t) => /Wise\/IBKR/.test(t.merchant) && t.date.startsWith(prefix)).reduce((a, t) => a + t.amount, 0);
-  const hist = (data.investHistory || []).filter((h) => h.value > 0);
+  const hist = data.investHistory || [];
+  // Deposited comes from IBKR's deposit history; until that loads, fall back to what the positions cost.
+  const lastDep = hist.slice().reverse().find((h) => h.deposited !== null && h.deposited !== undefined);
+  const deposited = lastDep ? lastDep.deposited : null;
+  const base = deposited !== null ? deposited : cost + cash;
+  const totalGain = total - base;
+  const dayChange = invested.reduce((a, h) => a + h.qty * (h.price - (h.prev || h.price)), 0);
+  const dayBase = value - dayChange;
+  const tick = (v) => (cur === 'usd' ? '$' + Math.round(v).toLocaleString('en-US') : '₱' + Math.round((v * fx) / 1000) + 'k');
 
   if (!hold.length) {
     const ibkr = ((data.netWorth || {}).accounts || []).find((a) => a.name === 'IBKR');
@@ -53,22 +47,11 @@ export default function Invest() {
         <div className="glass card strong" style={{ borderRadius: 24 }}>
           <div className="small muted">IBKR</div>
           <div style={{ fontSize: 38, fontWeight: 800 }}>{ibkr ? usd(ibkr.balance) : '–'}</div>
-          <div className="small muted">Add your positions to see your 70/20/10 mix, gains and where your next deposit should go.</div>
+          <div className="small muted">Add your positions to see your 70/20/10 mix and how it has grown.</div>
         </div>
         <button className="btn" onClick={() => askMoney('Here are my IBKR positions: ')}>Add positions with Ask Money</button>
       </Shell>
     );
-  }
-
-  // Chart: value against money put in, from the daily snapshots.
-  const pts = hist.length >= 2 ? hist : null;
-  let chart = null;
-  if (pts) {
-    const max = Math.max(...pts.map((p) => Math.max(p.value, p.cost))) * 1.06;
-    const min = Math.min(...pts.map((p) => Math.min(p.value, p.cost))) * 0.94;
-    const X = (i) => 4 + (i / (pts.length - 1)) * 326, Y = (v) => 140 - ((v - min) / (max - min || 1)) * 130;
-    const line = (k) => pts.map((p, i) => X(i).toFixed(1) + ',' + Y(p[k]).toFixed(1)).join(' ');
-    chart = { val: line('value'), cost: line('cost'), area: X(0) + ',140 ' + line('value') + ' ' + X(pts.length - 1) + ',140', first: pts[0].date.slice(5), last: pts[pts.length - 1].date.slice(5) };
   }
 
   return (
@@ -82,9 +65,13 @@ export default function Invest() {
         <div className="small muted">Worth now</div>
         <div style={{ fontSize: 52, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.02em' }}><CountUp key={cur} value={cur === 'usd' ? total : total * fx} format={cur === 'usd' ? usd : peso} /></div>
         <div className="small muted" style={{ marginTop: 4 }}>
-          Put in <b style={{ color: 'var(--ink)' }}>{money(cost)}</b> · {gain >= 0 ? 'up' : 'down'} <b style={{ color: gain >= 0 ? 'var(--under)' : 'var(--over)' }}>{money(Math.abs(gain))} ({cost ? (gain >= 0 ? '+' : '−') + Math.abs((gain / cost) * 100).toFixed(1) : 0}%)</b>
-          {cash > 0.5 ? ' · ' + money(cash) + ' cash' : ''}
+          {deposited !== null ? 'Deposited' : 'Cost + cash'} <b style={{ color: 'var(--ink)' }}>{money(base)}</b> · {totalGain >= 0 ? 'up' : 'down'} <b style={{ color: totalGain >= 0 ? 'var(--under)' : 'var(--over)' }}>{money(Math.abs(totalGain))} ({base ? (totalGain >= 0 ? '+' : '−') + Math.abs((totalGain / base) * 100).toFixed(1) : 0}%)</b>
         </div>
+        <div className="small muted">Invested {money(value)}{cash > 0.5 ? ' · Cash ' + money(cash) : ''}</div>
+      </div>
+
+      <div className="glass card" style={{ borderRadius: 24, padding: '12px 10px 10px' }}>
+        <InvestChart history={hist} money={money} tick={tick} live={total} />
       </div>
 
       <div className="glass card strong" style={{ display: 'flex', alignItems: 'center', gap: 16, borderRadius: 24 }}>
@@ -115,25 +102,6 @@ export default function Invest() {
         </div>
       </div>
 
-      {fx > 0 && (
-        <div style={{ padding: 16, borderRadius: 22, background: 'rgba(61,220,151,0.13)', border: '1px solid rgba(61,220,151,0.45)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="row">
-            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--under)', letterSpacing: '0.04em' }}>NEXT DEPOSIT</span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {AMOUNTS.map((a) => <button key={a} className={'chip' + (dep === a ? ' on' : '')} style={{ minHeight: 32, padding: '0 10px', fontSize: 12 }} onClick={() => setDep(a)}>₱{a / 1000}k</button>)}
-            </div>
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>Split {peso(dep)} like this to move toward 70/20/10</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {split.filter((p) => p.usd > 0.5).map((p) => (
-              <div key={p.key} className="rise" style={{ flex: Math.max(p.usd, 1), minWidth: 74, padding: '8px 10px', borderRadius: 12, background: p.color, color: '#0B0D10', fontSize: 12, fontWeight: 800 }}>
-                <div>{p.picks.join('/')}</div><div>{peso(p.usd * fx)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="glass card strong" style={{ borderRadius: 24, paddingBottom: 6 }}>
         {invested.sort((a, b) => b.usd - a.usd).map((h) => {
           const g = h.cost ? (h.usd - h.cost) / h.cost : 0;
@@ -146,24 +114,8 @@ export default function Invest() {
         })}
       </div>
 
-      <div className="glass card" style={{ borderRadius: 24, padding: '14px 10px 10px' }}>
-        <div className="small muted" style={{ padding: '0 6px 6px' }}>Worth against money put in</div>
-        {chart ? (
-          <>
-            <svg width="100%" viewBox="0 0 334 156" aria-hidden="true">
-              <polygon className="fadein" points={chart.area} fill="rgba(61,220,151,0.14)" />
-              <polyline points={chart.cost} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeDasharray="4 4" />
-              <polyline className="draw" pathLength="1" points={chart.val} fill="none" stroke="var(--under)" strokeWidth="3.5" strokeLinejoin="round" />
-              <text x="4" y="154" fill="#8A93A6" fontSize="10">{chart.first}</text>
-              <text x="330" y="154" fill="#8A93A6" fontSize="10" textAnchor="end">{chart.last}</text>
-            </svg>
-            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--muted)', padding: '2px 6px' }}><span>— Worth</span><span>- - Put in</span></div>
-          </>
-        ) : <div className="small muted" style={{ padding: '6px 6px 8px' }}>Builds from tonight: one point a day after the 10:39pm close.</div>}
-      </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
-        <div className="glass card"><div className="small muted">Deposited this month</div><div style={{ fontSize: 20, fontWeight: 800 }}>{peso(depositsThisMonth)}</div></div>
+        <div className="glass card"><div className="small muted">Day change</div><div style={{ fontSize: 20, fontWeight: 800, color: dayChange >= 0 ? 'var(--under)' : 'var(--over)' }}>{dayChange >= 0 ? '+' : '−'}{money(Math.abs(dayChange))} <span style={{ fontSize: 13 }}>{dayBase ? (dayChange >= 0 ? '+' : '−') + Math.abs((dayChange / dayBase) * 100).toFixed(1) + '%' : ''}</span></div></div>
         <div className="glass card"><div className="small muted">USD/PHP</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fx ? fx.toFixed(2) : '–'}</div></div>
       </div>
     </Shell>

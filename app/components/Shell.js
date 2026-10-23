@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Ask from './Ask';
+import TxSheet from './TxSheet';
+import QuickAdd from './QuickAdd';
+import Toast from './Toast';
 
 const TABS = [['/', 'Today'], ['/trends', 'Trends'], ['/budgets', 'Budgets'], ['/networth', 'Worth'], ['/invest', 'Invest']];
 
@@ -32,7 +35,7 @@ export default function Shell({ children, glow = 'a', tabs = true }) {
           ))}
         </nav>
       )}
-      {tabs && <Ask />}
+      {path !== '/login' && <><Ask button={tabs} /><TxSheet /><QuickAdd /><Toast /></>}
     </div>
   );
 }

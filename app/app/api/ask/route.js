@@ -1,29 +1,43 @@
 import { NextResponse } from 'next/server';
 import { sheetGet, sheetPost } from '../../../lib/sheet';
-import { ASK_MODEL, MARK, buildPrompt, toClaudeMessages } from '../../../lib/askPrompt';
+import { ASK_MODEL, OPS, TOOLS, buildPrompt, toClaudeMessages } from '../../../lib/askPrompt';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+// Streams the reply as NDJSON: {d: text} pieces, then {actions, replies} at the end.
 export async function POST(req) {
   const { messages } = await req.json();
-  const msgs = (Array.isArray(messages) ? messages : []).slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) }));
-  if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return NextResponse.json({ reply: 'Ask me something.', actions: [] });
+  const list = (Array.isArray(messages) ? messages : []).slice(-12);
+  if (!list.length || list[list.length - 1].role !== 'user') return NextResponse.json({ reply: 'Ask me something.', actions: [] });
 
-  // Without a key on Vercel, the Apps Script answers (no streaming).
+  // Without a key on Vercel, the Apps Script answers (no streaming, no photos).
   if (!process.env.CLAUDE_API_KEY) {
+    const msgs = list.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) }));
     const out = await sheetPost({ action: 'ask', messages: msgs });
     return NextResponse.json(out, { status: out.error ? 400 : 200 });
   }
 
   const data = await sheetGet({ months: 3 });
-  const { system, context } = buildPrompt(data);
-  const upstream = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': process.env.CLAUDE_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: ASK_MODEL, max_tokens: 1500, stream: true, system, messages: toClaudeMessages(msgs, context) })
-  });
-  if (!upstream.ok || !upstream.body) return NextResponse.json({ reply: 'Claude did not answer (' + upstream.status + '). Try again.', actions: [] });
+  const { system } = buildPrompt(data);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 55000);
+  let upstream;
+  try {
+    upstream = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
+      method: 'POST',
+      signal: ctl.signal,
+      headers: { 'content-type': 'application/json', 'x-api-key': process.env.CLAUDE_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: ASK_MODEL, max_tokens: 2000, stream: true, system, tools: TOOLS, messages: toClaudeMessages(list) })
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    return NextResponse.json({ reply: "Claude didn't answer in time. Try again.", actions: [] });
+  }
+  if (!upstream.ok || !upstream.body) {
+    clearTimeout(timer);
+    return NextResponse.json({ reply: 'Claude did not answer (' + upstream.status + '). Try again.', actions: [] });
+  }
 
   const enc = new TextEncoder();
   const stream = new ReadableStream({
@@ -31,14 +45,8 @@ export async function POST(req) {
       const send = (o) => controller.enqueue(enc.encode(JSON.stringify(o) + '\n'));
       const reader = upstream.body.getReader();
       const dec = new TextDecoder();
-      let sse = '', full = '', sent = 0, marked = false;
-      const flush = (final) => {
-        const at = full.indexOf(MARK);
-        if (at >= 0) marked = true;
-        // Hold back a few characters so a half-arrived marker is never shown.
-        const end = at >= 0 ? at : final ? full.length : Math.max(sent, full.length - MARK.length);
-        if (end > sent) { send({ d: full.slice(sent, end) }); sent = end; }
-      };
+      const blocks = {}; // index -> {type, name, json}
+      let sse = '';
       try {
         for (;;) {
           const { value, done } = await reader.read();
@@ -49,23 +57,28 @@ export async function POST(req) {
             const line = sse.slice(0, i).trim();
             sse = sse.slice(i + 1);
             if (!line.startsWith('data:')) continue;
-            try {
-              const ev = JSON.parse(line.slice(5));
-              if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') { full += ev.delta.text; if (!marked) flush(false); }
-            } catch (e) { /* keep-alive or partial line */ }
+            let ev;
+            try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
+            if (ev.type === 'content_block_start') blocks[ev.index] = { type: ev.content_block.type, name: ev.content_block.name, json: '' };
+            if (ev.type === 'content_block_delta' && ev.delta) {
+              if (ev.delta.type === 'text_delta') send({ d: ev.delta.text });
+              if (ev.delta.type === 'input_json_delta' && blocks[ev.index]) blocks[ev.index].json += ev.delta.partial_json;
+            }
           }
         }
-        if (!marked) flush(true);
-        let actions = [];
-        const at = full.indexOf(MARK);
-        if (at >= 0) {
-          const raw = full.slice(at + MARK.length);
-          try { actions = JSON.parse(raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1)); } catch (e) { actions = []; }
-        }
-        send({ actions: Array.isArray(actions) ? actions.slice(0, 12) : [] });
+        let actions = [], replies = [];
+        Object.values(blocks).forEach((b) => {
+          if (b.type !== 'tool_use') return;
+          let input = {};
+          try { input = JSON.parse(b.json || '{}'); } catch (e) { input = {}; }
+          if (b.name === 'propose_changes') actions = actions.concat((input.changes || []).filter((c) => c && OPS.includes(c.op)));
+          if (b.name === 'follow_ups') replies = (input.replies || []).filter((r) => typeof r === 'string').slice(0, 3);
+        });
+        send({ actions: actions.slice(0, 20), replies });
       } catch (e) {
         send({ d: '\n(Connection dropped. Try again.)' });
       }
+      clearTimeout(timer);
       controller.close();
     }
   });
