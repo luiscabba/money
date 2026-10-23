@@ -2,7 +2,8 @@
 // Ported from the Apps Script; Gmail itself is still read by the script, which posts each message here.
 import { select, update, eq } from './db';
 import { CATEGORIES, cleanMerchant, sourceAccount, manilaDay, peso } from './core';
-import { addRule, recipientRule, rules, allowance, transactions } from './store';
+import { addRule, recipientRule, rules, loadData } from './store';
+import { safeToSpend } from './safe';
 import { addTx } from './ops';
 import { netExpenses } from './money';
 import { matchGoal, addMatch } from './goalJobs';
@@ -380,10 +381,12 @@ export async function takeSmsRow(c) {
 
 export async function notifyNew(added) {
   if (!added.length) return;
-  const allow = await allowance();
+  // "Left today" is the app's Safe to spend: the rolling share of what's left this week.
   const today = manilaDay();
-  const rows = await transactions(1);
-  const spent = spentOn(today, rows);
+  const [y, m, d] = today.split('-').map(Number);
+  const s = safeToSpend(await loadData(2), { y, m, d });
+  const allow = Math.round(s.today + s.safe);
+  const spent = Math.round(s.today);
   for (const t of added) {
     const amt = peso(t.amount);
     let title, body;

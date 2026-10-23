@@ -23,8 +23,9 @@ export async function GET(req) {
   const hour = Number(stamp.slice(11, 13));
   const today = stamp.slice(0, 10);
   const spent = Math.round(netExpenses(data).filter((x) => x.date.startsWith(today)).reduce((a, x) => a + x.amount, 0));
-  const limit = data.allowance;
   const wk = safeToSpend(data, { y, m, d });
+  // Today's limit is the same rolling share as the app's Safe to spend ring.
+  const limit = Math.max(1, Math.round(wk.today + wk.safe));
   const plan = data.goalPlan || { goals: [] };
   const top = plan.goals[0] || null;
   const funded = plan.goals.find((g) => g.status === 'funded');
