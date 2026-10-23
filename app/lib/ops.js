@@ -1,0 +1,243 @@
+// Applies confirmed changes from the app and Ask Money. Each op is checked before it touches the database,
+// and returns what undoing it needs. Ported from the Apps Script's applyOps_.
+import { select, insert, update, remove, eq } from './db';
+import { CATEGORIES, ACCOUNTS, newId, parseWhen } from './core';
+import { addRule } from './store';
+import { recordBalance } from './balances';
+
+const QUOTES = { SPYL: 'LON:SPYL', GOOGL: 'NASDAQ:GOOGL', MSFT: 'NASDAQ:MSFT', AMZN: 'NASDAQ:AMZN', AAPL: 'NASDAQ:AAPL', NVDA: 'NASDAQ:NVDA', ETH: 'CURRENCY:ETHUSD', BTC: 'CURRENCY:BTCUSD' };
+const TX_COLS = ['ts', 'type', 'amount', 'merchant', 'category', 'source', 'ref', 'review', 'note'];
+// What undo may put back: table -> [key column, columns allowed].
+const RESTORE = {
+  transactions: ['n', TX_COLS],
+  budgets: ['name', ['monthly']],
+  owed: ['id', ['status', 'settled_at', 'match_row']],
+  plans: ['id', ['status']],
+  gaps: ['id', ['status']],
+  notes: ['id', ['note']]
+};
+
+export async function getTx(n) {
+  const r = Number(n);
+  if (!(r >= 2)) throw 'bad row';
+  const rows = await select('transactions', eq('n', r));
+  if (!rows[0]) throw 'bad row';
+  return rows[0];
+}
+
+export async function addTx(tx) {
+  const row = {
+    ts: (tx.date instanceof Date ? tx.date : parseWhen(tx.date)).toISOString(), type: tx.type, amount: Math.round(Number(tx.amount) * 100) / 100,
+    merchant: String(tx.merchant || ''), category: tx.category || '', source: tx.source || '', ref: tx.ref || '',
+    review: !!(tx.review || tx.category === 'Other'), note: tx.note || ''
+  };
+  const [saved] = await insert('transactions', [row]);
+  return Number(saved.n);
+}
+
+const patchTx = (n, patch) => update('transactions', eq('n', n), patch);
+const pick = (row, cols) => Object.fromEntries(cols.map((c) => [c, row[c]]));
+const restoreOf = (table, row) => ({ op: 'restore', table, key: row[RESTORE[table][0]], values: pick(row, RESTORE[table][1]) });
+const voidUndo = (n) => ({ op: 'restore', table: 'transactions', key: n, values: { type: 'Void', review: false } });
+
+function when(s) {
+  const d = s ? parseWhen(s) : new Date();
+  return isNaN(d) ? null : d;
+}
+
+// The review list's category picker: a category, or "Transfer" for not spending.
+export async function categorize(n, category, remember) {
+  if (CATEGORIES.indexOf(category) < 0 && category !== 'Transfer') throw 'bad request';
+  const t = await getTx(n);
+  const patch = { category, review: false };
+  if (category === 'Transfer') patch.type = /In|Income|Refund/.test(t.type) ? 'Transfer In' : 'Transfer Out';
+  await patchTx(t.n, patch);
+  if (remember) await addRule(t.merchant, category, 'Luis');
+  return [restoreOf('transactions', t)];
+}
+
+async function one(o) {
+  const op = o.op;
+  if (op === 'recategorize') {
+    if (CATEGORIES.indexOf(o.category) < 0) throw 'bad row or category';
+    const t = await getTx(o.row);
+    const patch = { category: o.category, review: false };
+    if (t.type !== 'Expense' && o.asExpense) patch.type = 'Expense';
+    await patchTx(t.n, patch);
+    if (o.remember) await addRule(t.merchant, o.category, 'Luis');
+    return [restoreOf('transactions', t)];
+  }
+  if (op === 'mark_transfer') {
+    const t = await getTx(o.row);
+    const patch = { type: /In|Income|Refund/.test(t.type) ? 'Transfer In' : 'Transfer Out', category: 'Transfer', review: false };
+    if (o.note) patch.merchant = String(o.note).slice(0, 80);
+    await patchTx(t.n, patch);
+    if (o.remember) await addRule(t.merchant, 'Transfer', 'Luis');
+    return [restoreOf('transactions', t)];
+  }
+  if (op === 'set_budget') {
+    const b = await select('budgets', eq('name', o.name));
+    if (!b[0]) throw 'unknown budget';
+    await update('budgets', eq('name', o.name), { monthly: Math.max(0, Number(o.amount) || 0) });
+    return [restoreOf('budgets', b[0])];
+  }
+  if (op === 'add_expense') {
+    const amt = Number(o.amount);
+    if (!(amt > 0) || CATEGORIES.indexOf(o.category) < 0) throw 'bad amount or category';
+    const n = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
+    return [voidUndo(n)];
+  }
+  if (op === 'add_owed') {
+    const amt = Number(o.amount);
+    if (!(amt > 0) || !o.who) throw 'need who and amount';
+    const id = newId();
+    await insert('owed', [{ id, who: String(o.who).slice(0, 40), amount: amt, purpose: String(o.for || '').slice(0, 80), status: 'open' }]);
+    const undo = [{ op: 'restore', table: 'owed', key: id, values: { status: 'removed' } }];
+    if (o.row) undo.push(...(await one({ op: 'mark_transfer', row: o.row })));
+    return undo;
+  }
+  if (op === 'settle_owed') {
+    const ow = await select('owed', eq('id', o.id));
+    if (!ow[0]) throw 'unknown IOU';
+    const undo = [restoreOf('owed', ow[0])];
+    let match = null;
+    if (o.row) {
+      const t = await getTx(o.row);
+      undo.push(restoreOf('transactions', t));
+      await patchTx(t.n, { type: 'Transfer In', category: 'Transfer', review: false });
+      match = t.n;
+    }
+    await update('owed', eq('id', o.id), { status: 'settled', settled_at: new Date().toISOString(), match_row: match });
+    return undo;
+  }
+  if (op === 'add_plan') {
+    const amt = Number(o.amount);
+    if (!(amt > 0) || !o.what) throw 'need what and amount';
+    const id = newId();
+    const due = /^\d{4}-\d\d-\d\d/.test(String(o.date || '')) ? String(o.date).slice(0, 10) : null;
+    await insert('plans', [{ id, what: String(o.what).slice(0, 60), amount: amt, due, status: 'planned' }]);
+    return [{ op: 'restore', table: 'plans', key: id, values: { status: 'removed' } }];
+  }
+  if (op === 'remove_plan') {
+    const p = await select('plans', eq('id', o.id));
+    if (!p[0]) throw 'unknown plan';
+    await update('plans', eq('id', o.id), { status: 'removed' });
+    return [restoreOf('plans', p[0])];
+  }
+  if (op === 'set_balance') {
+    if (ACCOUNTS.indexOf(o.account) < 0 || !(Number(o.amount) >= 0)) throw 'need account and amount';
+    await recordBalance(o.account, Number(o.amount), new Date(), 'told Ask Money');
+    return [];
+  }
+  if (op === 'set_holding') {
+    await setHolding(o);
+    return [];
+  }
+  if (op === 'resolve_gap') {
+    const g = await select('gaps', eq('id', o.id));
+    if (!g[0]) throw 'unknown gap';
+    await update('gaps', eq('id', o.id), { status: 'resolved' });
+    return [restoreOf('gaps', g[0])];
+  }
+  if (op === 'rename') {
+    // A nickname for a merchant or person, shown everywhere instead of the raw text. Empty name clears it.
+    const raw = String(o.merchant || '').trim();
+    if (!raw) throw 'need merchant';
+    const key = raw.toLowerCase();
+    const before = await select('names', eq('merchant', key));
+    const name = String(o.name || '').slice(0, 40);
+    if (name) await insert('names', [{ merchant: key, nickname: name }], { upsert: true, onConflict: 'merchant' });
+    else await remove('names', eq('merchant', key));
+    return [{ op: 'rename', merchant: raw, name: before[0] ? before[0].nickname : '' }];
+  }
+  if (op === 'set_note') {
+    const t = await getTx(o.row);
+    await patchTx(t.n, { note: String(o.note || '').slice(0, 120) });
+    return [restoreOf('transactions', t)];
+  }
+  if (op === 'edit_tx') {
+    // Fix a wrong amount, date, wallet or merchant on one row.
+    const t = await getTx(o.row);
+    const patch = {};
+    if (o.amount !== undefined) { const a = Number(o.amount); if (!(a > 0)) throw 'bad amount'; patch.amount = a; }
+    if (o.date) { const d = when(o.date); if (!d) throw 'bad date'; patch.ts = d.toISOString(); }
+    if (o.source) patch.source = String(o.source).slice(0, 30);
+    if (o.merchant) patch.merchant = String(o.merchant).slice(0, 60);
+    if (Object.keys(patch).length) await patchTx(t.n, patch);
+    return [restoreOf('transactions', t)];
+  }
+  if (op === 'void') {
+    // Removes a duplicate or mistaken row from every total; the row stays, marked Void.
+    const t = await getTx(o.row);
+    await patchTx(t.n, { type: 'Void', review: false });
+    return [restoreOf('transactions', t)];
+  }
+  if (op === 'split') {
+    // One payment, several categories: the row keeps the first part, the rest become new rows.
+    const t = await getTx(o.row);
+    const parts = (o.parts || []).filter((x) => Number(x.amount) > 0 && CATEGORIES.indexOf(x.category) >= 0);
+    if (parts.length < 2) throw 'need two parts';
+    const sum = parts.reduce((a, x) => a + Number(x.amount), 0);
+    if (Math.abs(sum - Number(t.amount)) > 0.5) throw 'parts must add up to ' + Number(t.amount);
+    const undo = [restoreOf('transactions', t)];
+    const patch = { amount: Number(parts[0].amount), category: parts[0].category, review: false };
+    if (parts[0].note) patch.note = String(parts[0].note).slice(0, 120);
+    await patchTx(t.n, patch);
+    const id = newId();
+    for (const x of parts.slice(1)) {
+      const n = await addTx({ date: new Date(t.ts), type: 'Expense', amount: Number(x.amount), merchant: String(x.merchant || t.merchant).slice(0, 60), category: x.category, source: t.source, ref: 'split-' + id, note: x.note ? String(x.note).slice(0, 120) : '' });
+      undo.push(voidUndo(n));
+    }
+    return undo;
+  }
+  if (op === 'remember') {
+    // A standing note for Ask Money ("the 500s to GCash are me moving money").
+    const text = String(o.text || '').trim().slice(0, 200);
+    if (!text) throw 'need text';
+    const id = newId();
+    await insert('notes', [{ id, note: text }]);
+    return [{ op: 'restore', table: 'notes', key: id, values: { note: '' } }];
+  }
+  if (op === 'forget') {
+    const nt = await select('notes', eq('id', o.id));
+    if (!nt[0]) throw 'unknown note';
+    await update('notes', eq('id', o.id), { note: '' });
+    return [restoreOf('notes', nt[0])];
+  }
+  if (op === 'restore') {
+    // Undo: puts back values captured before a change. Only the app's own tables and columns.
+    const spec = RESTORE[o.table];
+    if (!spec || o.key === undefined || o.key === null || !o.values) throw 'not allowed';
+    const patch = pick(o.values, spec[1].filter((c) => c in o.values));
+    if (!Object.keys(patch).length) throw 'bad restore';
+    const done = await update(o.table, eq(spec[0], o.key), patch);
+    if (!done.length) throw 'nothing to restore';
+    return [];
+  }
+  throw 'unknown op';
+}
+
+export async function setHolding(o) {
+  const sym = String(o.symbol || '').toUpperCase().trim();
+  if (!sym) throw 'need symbol';
+  const qty = Number(o.quantity);
+  if (!(qty >= 0)) throw 'need quantity';
+  if (qty === 0) { await remove('holdings', eq('symbol', sym)); return; }
+  const sleeve = o.sleeve || (sym === 'SPYL' ? 'Beta' : sym === 'CASH' ? 'Cash' : /^(ETH|BTC)$/.test(sym) ? 'Asymmetric' : 'Alpha');
+  const row = { symbol: sym, sleeve, quantity: qty, avg_cost: sym === 'CASH' ? 1 : Number(o.avgCost) || 0, quote: sym === 'CASH' ? '' : (o.quote || QUOTES[sym] || sym), updated_at: new Date().toISOString() };
+  await insert('holdings', [row], { upsert: true, onConflict: 'symbol' });
+}
+
+export async function applyOps(ops, actor = 'app') {
+  const results = [];
+  for (const o of ops || []) {
+    try {
+      const undo = await one(o);
+      results.push({ ok: true, undo });
+      await insert('changes', [{ actor, op: o, undo }]).catch(() => null);
+    } catch (err) {
+      results.push({ ok: false, error: String(err && err.message ? err.message : err) });
+    }
+  }
+  return results;
+}

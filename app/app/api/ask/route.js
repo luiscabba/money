@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sheetGet, sheetPost } from '../../../lib/sheet';
+import { useDb } from '../../../lib/db';
+import { loadData } from '../../../lib/store';
 import { ASK_MODEL, OPS, TOOLS, buildPrompt, toClaudeMessages } from '../../../lib/askPrompt';
 
 export const maxDuration = 60;
@@ -12,13 +14,14 @@ export async function POST(req) {
   if (!list.length || list[list.length - 1].role !== 'user') return NextResponse.json({ reply: 'Ask me something.', actions: [] });
 
   // Without a key on Vercel, the Apps Script answers (no streaming, no photos).
-  if (!process.env.CLAUDE_API_KEY) {
+  if (!process.env.CLAUDE_API_KEY && !useDb()) {
     const msgs = list.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) }));
     const out = await sheetPost({ action: 'ask', messages: msgs });
     return NextResponse.json(out, { status: out.error ? 400 : 200 });
   }
 
-  const data = await sheetGet({ months: 3 });
+  if (!process.env.CLAUDE_API_KEY) return NextResponse.json({ reply: 'Add CLAUDE_API_KEY in Vercel to use Ask Money.', actions: [] });
+  const data = useDb() ? await loadData(3) : await sheetGet({ months: 3 });
   const { system } = buildPrompt(data);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 55000);
