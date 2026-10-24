@@ -50,7 +50,8 @@ export async function POST(req) {
     await setSetting(PENDING, pending.concat({ id, ops: [op], at: now }).slice(-5));
     const cats = r.parts.map((p) => p.category);
     const catText = cats.length > 1 ? cats.slice(0, -1).join(', ') + ' and ' + cats[cats.length - 1] : cats[0];
-    return NextResponse.json({ say: 'Log ' + peso(r.total) + ' at ' + r.merchant + ', ' + catText + (r.wallet ? ', paid with ' + r.wallet : ', as cash') + '?', id });
+    const exact = '₱' + r.total.toLocaleString('en-US', { minimumFractionDigits: r.total % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    return NextResponse.json({ say: 'Log ' + exact + ' at ' + r.merchant + ', ' + catText + (r.wallet ? ', paid with ' + r.wallet : ', as cash') + '?', id });
   }
 
   // Step 1: his words.
