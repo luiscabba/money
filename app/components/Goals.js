@@ -85,7 +85,7 @@ export default function Goals({ data, now }) {
             </span>
           </button>
         </div>
-        {g.status === 'funded' && <button className="btn" onClick={() => setBuying(g)} style={{ background: GOAL, color: '#1E0B36' }}>I bought the {g.name}</button>}
+        {(g.status === 'funded' || g.saved >= g.price - 0.5) && <button className="btn" onClick={() => setBuying(g)} style={{ background: GOAL, color: '#1E0B36' }}>I bought the {g.name}</button>}
         </div>
       ))}
       <button className="btn" onClick={() => setView('new')}>New goal</button>
@@ -325,7 +325,7 @@ function GoalDetail({ g, data, now, onBack }) {
         <button className="chip" disabled={busy} onClick={() => add(1)} style={{ minHeight: 52, background: GOAL, borderColor: GOAL, color: 'var(--bg)' }}>Add</button>
         <button className="chip" disabled={busy} onClick={() => add(-1)} style={{ minHeight: 52 }}>Take out</button>
       </div>
-      {g.saved >= 1 && <button className="btn" onClick={() => setBuying(true)} style={{ background: g.status === 'funded' ? GOAL : undefined, color: g.status === 'funded' ? '#1E0B36' : undefined }}>I bought it</button>}
+      {g.saved >= 1 && <button className="btn" onClick={() => setBuying(true)} style={{ background: g.saved >= g.price - 0.5 ? GOAL : undefined, color: g.saved >= g.price - 0.5 ? '#1E0B36' : undefined }}>I bought it</button>}
       {buying && <BuyGoal g={g} data={data} onClose={() => setBuying(false)} />}
     </>
   );
