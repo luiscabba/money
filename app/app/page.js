@@ -9,6 +9,7 @@ import CountUp from '../components/CountUp';
 import TrendPanel from '../components/TrendPanel';
 import MonthCalendar from '../components/MonthCalendar';
 import ComingUp from '../components/ComingUp';
+import GapCard from '../components/GapCard';
 import { Delta } from '../components/TrendPills';
 import { enablePush } from '../components/SW';
 import { openTx, openAdd, askMoney } from '../components/apply';
@@ -113,12 +114,7 @@ export default function Today() {
         </div>
       )}
 
-      {gaps.map((g) => (
-        <button key={g.id} onClick={() => askMoney(`${peso(Math.abs(g.amount))} ${g.amount < 0 ? 'left' : 'came into'} ${g.account} between ${labelOf(g.from.slice(0, 10))} and ${labelOf(g.to.slice(0, 10))} without a transaction (gap ${g.id}). It was `)}
-          className="press" style={{ textAlign: 'left', padding: '12px 16px', borderRadius: 20, border: '1px solid rgba(255,138,61,0.5)', background: 'rgba(255,138,61,0.14)', color: '#FFB27D', fontSize: 13, lineHeight: 1.45, cursor: 'pointer' }}>
-          <b>{g.account}: {peso(Math.abs(g.amount))} {g.amount < 0 ? 'not tracked' : 'extra'}</b> between {labelOf(g.from.slice(0, 10)).slice(5)} and {labelOf(g.to.slice(0, 10)).slice(5)}. Tap to tell Moni what it was.
-        </button>
-      ))}
+      {gaps.map((g) => <GapCard key={g.id} g={g} owed={data.owed} />)}
 
       <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 2px' }}>
         {/* One state for the ring and the number: orange as soon as today is over its share. */}
