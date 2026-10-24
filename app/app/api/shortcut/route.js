@@ -32,7 +32,7 @@ export async function POST(req) {
   // Step 2: he tapped "Log it".
   if (body.confirm) {
     const p = pending.find((x) => x.id === String(body.confirm));
-    if (!p) return NextResponse.json({ say: 'That expired. Say it again.', id: '' });
+    if (!p) return NextResponse.json({ say: 'Already logged, or it expired. Check the app.', id: '' });
     await setSetting(PENDING, pending.filter((x) => x.id !== p.id));
     const res = await applyOps(p.ops, 'app');
     const bad = res.filter((r) => !r.ok);
@@ -66,5 +66,5 @@ export async function POST(req) {
   if (!ops.length) return NextResponse.json({ say: say || 'Not sure what to log. Try again.', id: '' });
   const id = randomBytes(6).toString('hex');
   await setSetting(PENDING, pending.concat({ id, ops, at: now }).slice(-5));
-  return NextResponse.json({ say: say || ops.map((o) => o.label).join(', ') + '?', id });
+  return NextResponse.json({ say: say || 'Log ' + ops.map((o) => [o.amount ? peso(o.amount) : '', o.merchant, o.category, o.source].filter(Boolean).join(' · ') || o.label).join(', ') + '?', id });
 }
