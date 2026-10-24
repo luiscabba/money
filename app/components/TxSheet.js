@@ -62,6 +62,17 @@ export default function TxSheet() {
   const [parts, setParts] = useState([]);
   const [busy, setBusy] = useState(false);
 
+  // A push about one charge opens the app at /?tx=<row>: show that row's sheet once the data is here.
+  useEffect(() => {
+    if (!data) return;
+    let row = null;
+    try { row = new URLSearchParams(window.location.search).get('tx'); } catch (e) {}
+    if (!row) return;
+    const hit = (data.transactions || []).find((x) => String(x.row) === row);
+    try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+    if (hit) window.dispatchEvent(new CustomEvent('money:tx', { detail: hit }));
+  }, [data]);
+
   useEffect(() => {
     const on = (e) => {
       const d = e.detail;
@@ -102,6 +113,7 @@ export default function TxSheet() {
           <span style={label}>Category</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {CATS.map((c) => <button key={c} disabled={busy} className={'chip' + (t.category === c && !t.review ? ' on' : '')} onClick={() => run([{ op: 'recategorize', row: t.row, category: c, remember: person, asExpense: t.type !== 'Expense' }], t.merchant + ' → ' + c)}>{c}</button>)}
+            {t.type === 'Expense' && person && <button disabled={busy} className="chip" onClick={() => run([{ op: 'add_owed', who: (name.trim() || raw.replace(/^Sen[dt] to /i, '')).slice(0, 40), amount: t.amount, row: t.row }], 'Owed to you')}>They owe me</button>}
             {t.type === 'Expense' && <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, remember: person }], 'Not counted as spending')}>Not spending</button>}
             {t.type === 'Expense' && !person && walletName && (WALLET_BRANDS.test(raw) || isAppWallet(raw)) && <button disabled={busy} className="chip" onClick={() => run([{ op: 'mark_transfer', row: t.row, note: walletName }], 'Moved to ' + walletName)}>Top-up to {walletName}</button>}
           </div>

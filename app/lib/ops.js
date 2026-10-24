@@ -474,9 +474,18 @@ async function one(o, ctx = {}) {
     await insert('settings', [{ key: 'goal_floor', value: floor, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
     return [{ op: 'restore', table: 'settings', key: 'goal_floor', values: { value: before[0] ? before[0].value : 600 } }];
   }
+  if (op === 'event_dismiss') {
+    // A calendar event Luis says won't cost anything: off the Coming up card and the evening push.
+    const id = String(o.id || '').slice(0, 200);
+    if (!id) throw 'need event id';
+    const before = await select('settings', eq('key', 'calendar_dismissed'));
+    const list = before[0] && Array.isArray(before[0].value) ? before[0].value : [];
+    await insert('settings', [{ key: 'calendar_dismissed', value: list.filter((x) => x !== id).concat(id).slice(-200), updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
+    return [{ op: 'restore', table: 'settings', key: 'calendar_dismissed', values: { value: list } }];
+  }
   if (op === 'restore') {
     // Undo: puts back values captured before a change. Only the app's own tables and columns.
-    if (o.table === 'settings' && !['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden'].includes(o.key)) throw 'not allowed';
+    if (o.table === 'settings' && !['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden', 'calendar_dismissed'].includes(o.key)) throw 'not allowed';
     const spec = RESTORE[o.table];
     if (!spec || o.key === undefined || o.key === null || !o.values) throw 'not allowed';
     const patch = pick(o.values, spec[1].filter((c) => c in o.values));

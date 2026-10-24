@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authorizedApp, manilaDay, peso, round2 } from '../../../../lib/core';
 import { insert, update, eq } from '../../../../lib/db';
-import { allowance, transactions, gaps, holdings, netWorth } from '../../../../lib/store';
+import { allowance, transactions, gaps, holdings, netWorth, loadData } from '../../../../lib/store';
+import { upcomingEvents, eventBudget } from '../../../../lib/calendar';
 import { spentOn } from '../../../../lib/ingest';
 import { netExpenses } from '../../../../lib/money';
 import { push } from '../../../../lib/push';
@@ -73,7 +74,16 @@ async function eveningCheck() {
   if (g) parts.push(g + ' untracked ' + (g === 1 ? 'amount' : 'amounts'));
   if (over > 0) parts.push(peso(over) + ' over today');
   if (parts.length) await push('Money check-in', parts.join(' · ') + '. Tap to sort it out.', '/?ask=checkin');
-  return { parts };
+  // Tomorrow's calendar events with a place: a heads-up with the budget it comes out of.
+  const [y, m, d] = manilaDay().split('-').map(Number);
+  const tmr = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  const data = await loadData(2);
+  const soon = upcomingEvents(data).filter((e) => e.start.slice(0, 10) === tmr);
+  for (const e of soon.slice(0, 2)) {
+    const b = eventBudget(data, e, Number(tmr.slice(0, 4)), Number(tmr.slice(5, 7)));
+    await push(e.title + ' tomorrow', (b ? b.name + ' has ' + (b.left >= 0 ? peso(b.left) + ' left' : peso(-b.left) + ' over') + '. ' : '') + 'Tap to plan it.', '/');
+  }
+  return { parts, events: soon.length };
 }
 
 const JOBS = {

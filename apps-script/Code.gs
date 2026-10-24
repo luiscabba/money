@@ -179,6 +179,27 @@ function syncSheet() {
   writeTransactions_(out.transactions);
   p.setProperty('MIRROR_SINCE', out.now);
   sendPrices_();
+  try { syncCalendar(); } catch (e) { console.error('calendar', e); }
+}
+
+/* ---------- calendar: next week's events that have a place ---------- */
+
+// Runs with the 10-minute sync, at most every 30 minutes. Only events with a location, not ones declined.
+function syncCalendar(force) {
+  const p = PropertiesService.getScriptProperties();
+  const last = Number(p.getProperty('CALENDAR_AT') || 0);
+  if (!force && Date.now() - last < 30 * 60000) return;
+  const now = new Date();
+  const until = new Date(now.getTime() + 8 * 86400000);
+  const events = CalendarApp.getDefaultCalendar().getEvents(now, until)
+    .filter(function (e) { return String(e.getLocation() || '').trim() && e.getMyStatus() !== CalendarApp.GuestStatus.NO; })
+    .slice(0, 40)
+    .map(function (e) {
+      const fmt = function (d) { return Utilities.formatDate(d, TZ, "yyyy-MM-dd'T'HH:mm:ss") + '+08:00'; };
+      return { id: e.getId() + '@' + e.getStartTime().getTime(), title: e.getTitle(), start: fmt(e.getStartTime()), end: fmt(e.getEndTime()), location: e.getLocation(), allDay: e.isAllDayEvent() };
+    });
+  api_('post', '/api/ingest/calendar', { events: events });
+  p.setProperty('CALENDAR_AT', String(Date.now()));
 }
 
 // Nightly: every tab rewritten from the database.

@@ -151,7 +151,7 @@ export async function goalPending(pre) {
 // Everything the screens need, fetched in parallel (about two round trips instead of six in a row).
 export async function loadData(months = 13) {
   const nick = names();
-  const SETTINGS = ['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden'];
+  const SETTINGS = ['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden', 'calendar_events', 'calendar_dismissed'];
   const [bs, tx, nw, hold, ih, ow, pl, gp, nt, gs, mv, st] = await Promise.all([
     budgets(), transactions(months, nick), netWorth(), holdings(), investHistory(), owed(), plans(), gaps(), notes(),
     goals(), goalMoves(), select('settings', 'select=key,value&key=in.(' + SETTINGS.join(',') + ')')
@@ -166,6 +166,7 @@ export async function loadData(months = 13) {
     updatedAt: manila(new Date()).replace(' ', 'T') + '+08:00',
     allowance: Math.round((total - g.plan.setAside) / new Date(yy, mm, 0).getDate()),
     goals: g.list, goalMoves: g.moves, goalPlan: g.plan, goalPending: pending, billsHidden: Array.isArray(hiddenBills) ? hiddenBills : [],
+    calendarEvents: Array.isArray(set.calendar_events) ? set.calendar_events : [], calendarDismissed: Array.isArray(set.calendar_dismissed) ? set.calendar_dismissed : [],
     budgets: bs, transactions: tx, netWorth: nw, holdings: hold, investHistory: ih, owed: ow, plans: pl, gaps: gp, notes: nt,
     categories: CATEGORIES
   };

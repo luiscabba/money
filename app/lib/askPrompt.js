@@ -3,6 +3,7 @@ import { manilaNow, monthSpent, budgetGroups, avgMonthlySpend, streakUnder, allo
 import { safeToSpend } from './safe';
 import { weekTrend, monthTrend } from './trends';
 import { detectBills } from './bills';
+import { upcomingEvents, eventBudget } from './calendar';
 
 export const ASK_MODEL = 'claude-sonnet-5-5';
 
@@ -46,7 +47,7 @@ function summary(data) {
   }
 }
 
-export const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_floor', 'goal_sweep', 'goal_sweep_keep', 'goal_buy', 'goal_match_dismiss', 'bill_hide', 'bill_unhide', 'add_tx', 'edit_owed', 'remove_owed', 'edit_plan', 'add_rule', 'forget_rule', 'add_budget', 'remove_budget', 'undo_change'];
+export const OPS = ['recategorize', 'mark_transfer', 'set_budget', 'add_expense', 'add_owed', 'settle_owed', 'add_plan', 'remove_plan', 'set_balance', 'resolve_gap', 'set_holding', 'rename', 'set_note', 'edit_tx', 'void', 'split', 'remember', 'forget', 'goal_add', 'goal_move', 'goal_edit', 'goal_order', 'goal_remove', 'goal_floor', 'goal_sweep', 'goal_sweep_keep', 'goal_buy', 'goal_match_dismiss', 'bill_hide', 'bill_unhide', 'add_tx', 'edit_owed', 'remove_owed', 'edit_plan', 'add_rule', 'forget_rule', 'add_budget', 'remove_budget', 'undo_change', 'event_dismiss'];
 
 // Changes come back as a structured tool call, never parsed out of prose.
 export const TOOLS = [
@@ -114,6 +115,7 @@ const INSTRUCTIONS = [
   'More changes: add_tx logs money in or moved (Income, Refund, Transfer In, Transfer Out, Cash Withdrawal) with amount, merchant (who it was from or to), source and date; use add_expense only for spending. edit_tx can also change a row\'s type or category, including bringing back a voided row. edit_owed and remove_owed fix or drop an IOU by id; edit_plan changes a planned purchase. add_rule files a merchant under a category from now on (pattern is the merchant text); forget_rule removes one. add_budget creates a budget with the categories it covers; remove_budget deletes one; set_budget changes an amount. bill_unhide brings back a bill taken off Bills. goal_match_dismiss says a purchase was not for a goal.',
   'Plans: a planned purchase counts against this week from its date (an undated one, every week) until bought or removed. Logging a purchase of the same amount near its date marks it done by itself. When he says he bought it with a different amount, or no longer needs it, propose remove_plan.',
   'Untracked money: when he explains a gap, log what it was (add_expense, or add_tx for money in or moved) and in the same card propose resolve_gap with that gap id. If he says it was nothing or is already logged, just propose resolve_gap.',
+  'Calendar: when he plans for an event, propose add_plan with what = the event title exactly, its date, and the amount he says (or a sensible guess from what he usually spends there, stated in the text). If he says it will not cost anything, propose event_dismiss with its id.',
   'Undo: when he says undo that or take that back, find it in Recent changes and propose undo_change with its id. Never undo something marked undone.',
   'Bills: the Bills screen lists every repeat charge above, including yearly ones whose last charge is older than the transactions shown. When he says one is not a repeat charge, propose bill_hide with its key and name; never say you cannot see a bill that is in that list.',
   'set_balance sets an account\'s whole total as Luis states it (for Maya: wallet plus savings). Use it when he says what a balance is or should be; do not also log a gap to make the numbers meet.',
@@ -163,6 +165,7 @@ export function buildPrompt(data) {
     'Owed to Luis: ' + JSON.stringify((data.owed || []).filter((o) => o.status === 'open')),
     'Planned purchases: ' + JSON.stringify(data.plans || []),
     'Untracked money (negative amount = spending the app missed): ' + JSON.stringify(data.gaps || []),
+    'Coming up (calendar events with a place, next 7 days; id | when | title | place | budget left): ' + (upcomingEvents(data).map((e) => { const [y, m] = e.start.slice(0, 7).split('-').map(Number); const b = eventBudget(data, e, y, m); return [e.id, e.start.slice(0, 16).replace('T', ' '), e.title, e.location, b ? b.name + ' ' + p(b.left) : '?'].join(' | '); }).join('; ') || 'none'),
     'Goals (priority order; set-aside per month already taken out of the limits): ' + goalsLine(data),
     'Category rules (merchant text -> category): ' + (((data.rules || []).map((r) => r.pattern + ' -> ' + r.category).join('; ')) || 'none'),
     'Bills taken off the list (key, name): ' + (((data.billsHidden || []).map((h) => h.key + ' ' + h.name).join('; ')) || 'none'),

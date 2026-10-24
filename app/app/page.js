@@ -8,6 +8,7 @@ import useData from '../components/useData';
 import CountUp from '../components/CountUp';
 import TrendPanel from '../components/TrendPanel';
 import MonthCalendar from '../components/MonthCalendar';
+import ComingUp from '../components/ComingUp';
 import { Delta } from '../components/TrendPills';
 import { enablePush } from '../components/SW';
 import { openTx, openAdd, askMoney } from '../components/apply';
@@ -149,6 +150,8 @@ export default function Today() {
       </div>
       {panel === 'trend' && <TrendPanel data={data} now={now} />}
       {panel === 'month' && <MonthCalendar data={data} now={now} picked={pick && (Number(pick.slice(0, 4)) + '-' + Number(pick.slice(5, 7)) + '-' + Number(pick.slice(8, 10)))} onPick={(y, mo, d) => setPick(dayKey(y, mo, d))} />}
+
+      <ComingUp data={data} now={now} />
 
       <div key={pick || 'recent'} className="glass card strong rise" style={{ display: 'flex', flexDirection: 'column', gap: 9, borderRadius: 24 }}>
         <div className="row">

@@ -407,9 +407,10 @@ export async function notifyNew(added) {
         continue;
       }
     }
-    if (t.ask) { title = amt + ' ' + t.merchant.replace(/^Send to/, 'to'); body = 'What was it? Tap to tell Money.'; }
-    else if (t.review) body += ' · tap to categorize';
-    await push(title, body, t.review ? '/review' : '/');
+    // Unknown sends and charges ask in the moment; the tap opens that row's sheet, not the review list.
+    if (t.ask) { title = amt + ' ' + t.merchant.replace(/^Send to/, 'to'); body = 'Who was this? Tap to answer.'; }
+    else if (t.review) { title = amt + ' · ' + t.merchant; body = 'What was this? Tap to answer.'; }
+    await push(title, body, (t.ask || t.review) && t.row ? '/?tx=' + t.row : '/');
   }
 }
 

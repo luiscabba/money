@@ -6,7 +6,7 @@ const OPEN = ['/login', '/api/login', '/api/push', '/manifest.webmanifest', '/sw
 export async function middleware(req) {
   const { pathname } = req.nextUrl;
   // Machine routes check the shared APP_TOKEN themselves.
-  if (OPEN.includes(pathname) || pathname.startsWith('/_next/') || pathname.startsWith('/moni/') || pathname === '/api/widget' || /^\/api\/(ingest|cron|export|admin)(\/|$)/.test(pathname)) return NextResponse.next();
+  if (OPEN.includes(pathname) || pathname.startsWith('/_next/') || pathname.startsWith('/moni/') || pathname === '/api/widget' || pathname === '/api/shortcut' || /^\/api\/(ingest|cron|export|admin)(\/|$)/.test(pathname)) return NextResponse.next();
   if (await validToken(req.cookies.get(COOKIE)?.value)) return NextResponse.next();
   if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const url = req.nextUrl.clone();
