@@ -8,6 +8,7 @@ import Bills from '../../components/Bills';
 import Owed from '../../components/Owed';
 import Seg from '../../components/Seg';
 import Goals from '../../components/Goals';
+import { EditBudget, NewBudget } from '../../components/BudgetSheet';
 import { openTx } from '../../components/apply';
 import { peso, MONTHS, manilaNow, daysIn, budgetGroups, totalBudget, monthSpent } from '../../lib/money';
 
@@ -17,6 +18,7 @@ export default function Budgets() {
   const [sel, setSel] = useState(0);
   const [tab, setTab] = useState('budgets');
   const [open, setOpen] = useState('');
+  const [sheet, setSheet] = useState(''); // 'edit' | 'new'
   // Pushes link to /budgets?tab=goals.
   useEffect(() => {
     const u = new URL(window.location.href);
@@ -74,11 +76,13 @@ export default function Budgets() {
         })}
       </div>
 
+      <button className="chip" onClick={() => setSheet('new')} style={{ alignSelf: 'center', borderStyle: 'dashed' }}>+ New budget</button>
+
       {cur && (
         <div key={sel} className="glass card strong rise" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="row small" style={{ fontWeight: 700 }}>
             <span>{cur.name} · {peso(cur.spent)} / {peso(cur.budget)}</span>
-            <span style={{ color: cur.spent > cur.budget ? 'var(--over)' : 'var(--under)' }}>{cur.spent > cur.budget ? peso(cur.spent - cur.budget) + ' over' : peso(cur.budget - cur.spent) + ' left'}</span>
+            <button className="chip on" onClick={() => setSheet('edit')} style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}>Edit</button>
           </div>
           {top.length === 0 && <div className="small muted">Nothing yet this month.</div>}
           {top.slice(0, 8).map((t) => (
@@ -94,6 +98,8 @@ export default function Budgets() {
         </div>
       )}
       </>}
+      {sheet === 'edit' && cur && <EditBudget key={cur.name} data={data} now={now} budget={cur} onClose={() => setSheet('')} />}
+      {sheet === 'new' && <NewBudget data={data} now={now} onClose={() => setSheet('')} />}
     </Shell>
   );
 }

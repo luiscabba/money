@@ -12,7 +12,7 @@ const TX_COLS = ['ts', 'type', 'amount', 'merchant', 'category', 'source', 'ref'
 // What undo may put back: table -> [key column, columns allowed].
 const RESTORE = {
   transactions: ['n', TX_COLS],
-  budgets: ['name', ['monthly']],
+  budgets: ['name', ['monthly', 'includes']],
   owed: ['id', ['status', 'settled_at', 'match_row', 'who', 'amount', 'purpose']],
   plans: ['id', ['status', 'what', 'amount', 'due']],
   gaps: ['id', ['status']],
@@ -319,15 +319,38 @@ async function one(o, ctx = {}) {
     const includes = (o.includes || [name]).filter((c) => CATEGORIES.indexOf(c) >= 0);
     if (!name || !includes.length) throw 'need a name and categories from the list';
     if ((await select('budgets', eq('name', name))).length) throw 'budget exists, use set_budget';
+    // take: the categories move out of whichever budgets had them (a category counts in one budget only).
+    const undo = ctx.undo = [];
+    if (o.take) {
+      const all = await select('budgets', 'select=*');
+      for (const b of all) {
+        const inc = b.includes && b.includes.length ? b.includes : [b.name];
+        const keep = inc.filter((c) => includes.indexOf(c) < 0);
+        if (keep.length === inc.length) continue;
+        if (!keep.length) throw b.name + ' would cover nothing; delete it instead';
+        undo.push(restoreOf('budgets', b));
+        await update('budgets', eq('name', b.name), { includes: keep });
+      }
+    }
     const last = await select('budgets', 'select=sort&order=sort.desc&limit=1');
     await insert('budgets', [{ name, monthly: amt, includes, sort: o.sort !== undefined ? Number(o.sort) : (last[0] ? last[0].sort + 1 : 0) }]);
-    return [{ op: 'remove_budget', name }];
+    return [...undo, { op: 'remove_budget', name }];
   }
   if (op === 'remove_budget') {
     const b = (await select('budgets', eq('name', String(o.name || ''))))[0];
     if (!b) throw 'unknown budget';
+    const undo = [];
+    // merge: its categories join Other, so that spending still counts in a budget.
+    if (o.merge && b.name !== 'Other') {
+      const other = (await select('budgets', eq('name', 'Other')))[0];
+      if (other) {
+        const inc = other.includes && other.includes.length ? other.includes : ['Other'];
+        const add = (b.includes && b.includes.length ? b.includes : [b.name]).filter((c) => inc.indexOf(c) < 0 && CATEGORIES.indexOf(c) >= 0);
+        if (add.length) { undo.push(restoreOf('budgets', other)); await update('budgets', eq('name', 'Other'), { includes: inc.concat(add) }); }
+      }
+    }
     await remove('budgets', eq('name', b.name));
-    return [{ op: 'add_budget', name: b.name, amount: Number(b.monthly), includes: b.includes, sort: b.sort }];
+    return [{ op: 'add_budget', name: b.name, amount: Number(b.monthly), includes: b.includes, sort: b.sort }, ...undo];
   }
   if (op === 'bill_unhide') {
     const before = await select('settings', eq('key', 'bills_hidden'));
