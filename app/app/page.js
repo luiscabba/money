@@ -126,9 +126,9 @@ export default function Today() {
           <div className="small muted">{ok ? 'Safe to spend' : 'Over today'}</div>
           <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.05, color: ok ? undefined : 'var(--over)' }}>{ok ? <CountUp value={s.safe} format={peso} /> : peso(-s.safe)}</div>
           <div className="small muted">{s.left >= 0 ? peso(s.left) + ' left this week' : peso(-s.left) + ' over this week'}</div>
-          {s.planned > 0 && <div style={{ fontSize: 11, color: '#8A93A6' }}>{peso(s.planned)} planned</div>}
         </Ring>
       </div>
+      {s.planned > 0 && <button onClick={() => { const el = document.getElementById('coming-up'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} style={{ alignSelf: 'center', marginTop: -6, minHeight: 36, border: 0, background: 'transparent', color: '#C38BFF', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{peso(s.planned)} planned ›</button>}
 
       <div className="glass" style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 6px', borderRadius: 22 }}>
         {week.map((d, i) => (

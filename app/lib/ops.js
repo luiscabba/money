@@ -299,6 +299,13 @@ async function one(o, ctx = {}) {
     await update('plans', eq('id', o.id), patch);
     return [restoreOf('plans', pl[0])];
   }
+  if (op === 'plan_done') {
+    // Bought: the plan stops counting against the week (the purchase itself is its own row).
+    const pl = await select('plans', eq('id', o.id));
+    if (!pl[0]) throw 'unknown plan';
+    await update('plans', eq('id', o.id), { status: 'done' });
+    return [restoreOf('plans', pl[0])];
+  }
   if (op === 'add_rule' || op === 'forget_rule') {
     // A standing category rule for a merchant ("always file Grab as Transport"), or removing one.
     const key = String(o.pattern || o.merchant || '').toLowerCase().trim();
