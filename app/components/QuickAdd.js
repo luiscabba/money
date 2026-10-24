@@ -21,7 +21,9 @@ function shrink(file) {
   });
 }
 const nowLocal = () => new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Manila' }).slice(0, 16).replace(' ', 'T');
-const whenLabel = (v) => new Date(v + ':00+08:00').toLocaleString('en-US', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const whenLabel = (v) => { const d = new Date(v + ':00+08:00'); const o = { timeZone: 'Asia/Manila' }; return d.toLocaleDateString('en-US', { ...o, weekday: 'short' }) + ' ' + d.toLocaleDateString('en-US', { ...o, day: 'numeric' }) + ', ' + d.toLocaleTimeString('en-US', { ...o, hour: 'numeric', minute: '2-digit' }); };
+// Pesos with centavos when there are any (receipts), whole otherwise.
+const exact = (n) => '₱' + Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 
 // Log a payment with no text or notification: scan a receipt, pick a photo, or type it.
 export default function QuickAdd() {
@@ -116,7 +118,7 @@ export default function QuickAdd() {
               <b style={{ fontSize: 14 }}>Split by category</b>
               <input type="checkbox" role="switch" checked={split} onChange={(e) => setSplit(e.target.checked)} style={{ width: 22, height: 22, accentColor: '#3DDC97' }} />
             </label>
-            {r.parts.map((p) => <div key={p.category} className="row" style={{ fontSize: 14, opacity: split ? 1 : 0.5 }}><span>{p.category}{p.items ? <span className="muted"> · {p.items} {p.items === 1 ? 'item' : 'items'}</span> : ''}</span><b>{peso(p.amount)}</b></div>)}
+            {r.parts.map((p) => <div key={p.category} className="row" style={{ fontSize: 14, opacity: split ? 1 : 0.5 }}><span>{p.category}{p.items ? <span className="muted"> · {p.items} {p.items === 1 ? 'item' : 'items'}</span> : ''}</span><b>{exact(p.amount)}</b></div>)}
             {split && Math.abs(r.total - amt) >= 0.01 && <span className="small muted">You changed the amount, so it's logged as one category.</span>}
           </div>
         )}
@@ -126,7 +128,7 @@ export default function QuickAdd() {
           <button type="button" className="chip" aria-expanded={picking} onClick={() => setPicking((x) => !x)}>{when ? whenLabel(when) : 'Now'} ▾</button>
           {picking && <input type="datetime-local" aria-label="When" className="input" style={{ minHeight: 44, fontSize: 16, flex: 1, minWidth: 200 }} value={when || nowLocal()} max={nowLocal()} onChange={(e) => setWhen(e.target.value)} />}
         </div>
-        <button className="btn" disabled={busy || !(amt > 0) || (scan && scan.reading)} type="submit">{busy ? 'Saving…' : amt > 0 ? 'Add ' + peso(amt) : 'Add'}</button>
+        <button className="btn" disabled={busy || !(amt > 0) || (scan && scan.reading)} type="submit">{busy ? 'Saving…' : amt > 0 ? 'Add ' + exact(amt) : 'Add'}</button>
         {wallet !== 'Cash' && <span className="small muted">When the {wallet.split(' ')[0]} text arrives, it fills in this row instead of adding another.</span>}
       </form>
     </Sheet>
