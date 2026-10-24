@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { peso, totalBudget, daysIn } from '../lib/money';
 import { goalPlan, behindBy } from '../lib/goals';
 import { change } from './apply';
+import { Sheet } from './TxSheet';
 
 const GOAL = '#C38BFF';
 const SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -30,6 +31,7 @@ function Pill({ g }) {
 
 export default function Goals({ data, now }) {
   const [view, setView] = useState('list');
+  const [buying, setBuying] = useState(null);
   const plan = data.goalPlan;
   if (!plan) return <div className="small muted">Goals need the database switched on.</div>;
   const rows = plan.goals.map((g) => ({ ...g, behind: g.dated ? behindBy(g, g.saved, now) : 0 }));
@@ -64,7 +66,8 @@ export default function Goals({ data, now }) {
       {pending.sweep && rows.length > 0 && <SweepCard sweep={pending.sweep} rows={rows} />}
       {rows.length === 0 && <div className="small muted" style={{ padding: '8px 4px' }}>No goals yet.</div>}
       {rows.map((g, i) => (
-        <div key={g.id} className="glass card rise" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '14px 14px 14px 10px', borderRadius: 22 }}>
+        <div key={g.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="glass card rise" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '14px 14px 14px 10px', borderRadius: 22 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <span style={{ width: 28, height: 28, borderRadius: 14, background: 'rgba(195,139,255,0.2)', color: GOAL, fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
             {i > 0 && (
@@ -82,8 +85,11 @@ export default function Goals({ data, now }) {
             </span>
           </button>
         </div>
+        {g.status === 'funded' && <button className="btn" onClick={() => setBuying(g)} style={{ background: GOAL, color: '#1E0B36' }}>I bought the {g.name}</button>}
+        </div>
       ))}
       <button className="btn" onClick={() => setView('new')}>New goal</button>
+      {buying && <BuyGoal g={buying} data={data} onClose={() => setBuying(null)} />}
     </>
   );
 }
@@ -246,6 +252,7 @@ function NewGoal({ data, now, onDone }) {
 
 function GoalDetail({ g, data, now, onBack }) {
   const [amt, setAmt] = useState('');
+  const [buying, setBuying] = useState(false);
   const [busy, setBusy] = useState(false);
   const moves = (data.goalMoves || []).filter((m) => m.goal === g.id);
   const run = async (ops, text) => { setBusy(true); const r = await change(ops, text); setBusy(false); return r; };
@@ -318,6 +325,72 @@ function GoalDetail({ g, data, now, onBack }) {
         <button className="chip" disabled={busy} onClick={() => add(1)} style={{ minHeight: 52, background: GOAL, borderColor: GOAL, color: 'var(--bg)' }}>Add</button>
         <button className="chip" disabled={busy} onClick={() => add(-1)} style={{ minHeight: 52 }}>Take out</button>
       </div>
+      {g.saved >= 1 && <button className="btn" onClick={() => setBuying(true)} style={{ background: g.status === 'funded' ? GOAL : undefined, color: g.status === 'funded' ? '#1E0B36' : undefined }}>I bought it</button>}
+      {buying && <BuyGoal g={g} data={data} onClose={() => setBuying(false)} />}
     </>
+  );
+}
+
+// "I bought it": pick the purchase (closest to the price, last 30 days) or log it now, then pay it from the goal.
+const PAY_WALLETS = ['Maya Card', 'Maya Wallet', 'GCash', 'GoTyme', 'BPI', 'Cash'];
+export function BuyGoal({ g, data, onClose }) {
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const cands = (data.transactions || [])
+    .filter((t) => t.type === 'Expense' && !t.goal && t.date.slice(0, 10) >= since && t.amount <= g.saved + 0.5 && t.amount >= g.price * 0.5)
+    .sort((a, b) => Math.abs(a.amount - g.price) - Math.abs(b.amount - g.price)).slice(0, 5);
+  const [pick, setPick] = useState(cands[0] ? cands[0].row : 'new');
+  const [amt, setAmt] = useState(String(Math.round(Math.min(g.price, g.saved))));
+  const [wallet, setWallet] = useState('Maya Card');
+  const [busy, setBusy] = useState(false);
+  const num = Math.round(Number(String(amt).replace(/[^\d.]/g, '')) || 0);
+  const chosen = pick === 'new' ? null : cands.find((t) => t.row === pick);
+  const cost = chosen ? chosen.amount : num;
+  const rest = Math.round(g.saved - cost);
+  const next = (data.goalPlan.goals || []).find((x) => x.id !== g.id);
+  const tooMuch = cost > g.saved + 0.5;
+  const pay = async () => {
+    setBusy(true);
+    const op = chosen ? { op: 'goal_buy', id: g.id, row: chosen.row } : { op: 'goal_buy', id: g.id, amount: num, merchant: g.name, source: wallet, category: 'Shopping' };
+    const r = await change([op], 'Paid from ' + g.name);
+    setBusy(false);
+    if (r.ok) onClose();
+  };
+  const radio = (on) => ({ width: 22, height: 22, flexShrink: 0, borderRadius: 11, boxSizing: 'border-box', border: on ? '7px solid ' + GOAL : '2px solid #4A5060' });
+  const rowStyle = { display: 'flex', alignItems: 'center', gap: 12, minHeight: 62, width: '100%', border: 0, borderBottom: '1px solid #262B36', background: 'transparent', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer', padding: 0, fontFamily: 'inherit' };
+  const when = (d) => new Date(d.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return (
+    <Sheet title="Which purchase was it?" onClose={onClose}>
+      <div><div style={{ fontSize: 20, fontWeight: 800 }}>Which purchase was it?</div><div className="small muted">{g.name} · {peso(g.saved)} saved</div></div>
+      <div role="radiogroup" aria-label="Purchase" style={{ display: 'flex', flexDirection: 'column', borderRadius: 18, background: 'rgba(0,0,0,0.35)', padding: '4px 14px' }}>
+        {cands.map((t) => (
+          <button key={t.row} role="radio" aria-checked={pick === t.row} onClick={() => setPick(t.row)} style={rowStyle}>
+            <span aria-hidden="true" style={radio(pick === t.row)} />
+            <span style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}><b style={{ fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.merchant}</b><span className="small muted">{when(t.date)} · {t.source}</span></span>
+            <b style={{ fontSize: 16 }}>{peso(t.amount)}</b>
+          </button>
+        ))}
+        <button role="radio" aria-checked={pick === 'new'} onClick={() => setPick('new')} style={{ ...rowStyle, borderBottom: 0 }}>
+          <span aria-hidden="true" style={radio(pick === 'new')} />
+          <span style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}><b style={{ fontSize: 15 }}>Not logged yet</b><span className="small muted">Log it now with the price and wallet</span></span>
+        </button>
+      </div>
+      {pick === 'new' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="row">
+            <label htmlFor="gb-amt" className="small muted" style={{ fontWeight: 700 }}>Price</label>
+            <input id="gb-amt" inputMode="numeric" value={'₱' + num.toLocaleString('en-US')} onChange={(e) => setAmt(e.target.value)} style={{ width: 170, border: 0, background: 'transparent', color: 'var(--ink)', textAlign: 'right', fontSize: 30, fontWeight: 800, fontFamily: 'inherit' }} />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {PAY_WALLETS.map((w) => <button key={w} className={'chip' + (wallet === w ? ' on' : '')} aria-pressed={wallet === w} onClick={() => setWallet(w)}>{w}</button>)}
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', borderRadius: 16, background: 'rgba(195,139,255,0.12)' }}>
+        <div className="row small"><span style={{ color: '#D3D7E0' }}>Leaves this month's spending</span><b>{peso(cost)}</b></div>
+        {rest >= 1 && next && <div className="row small"><span style={{ color: '#D3D7E0' }}>Left over to {next.name}</span><b>{peso(rest)}</b></div>}
+        {tooMuch && <div className="small" style={{ color: 'var(--over)' }}>That's more than the {peso(g.saved)} saved.</div>}
+      </div>
+      <button className="btn" disabled={busy || tooMuch || !(cost > 0)} onClick={pay} style={{ minHeight: 54, background: GOAL, color: '#1E0B36' }}>Pay {peso(cost)} from the goal</button>
+    </Sheet>
   );
 }

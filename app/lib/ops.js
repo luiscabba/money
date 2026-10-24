@@ -454,12 +454,20 @@ async function one(o, ctx = {}) {
   if (op === 'goal_buy') {
     // Pay a purchase from a goal: it leaves the budget, the goal closes, any leftover goes to the next goal.
     const g = await goalOf(o.id);
-    const t = await getTx(o.row);
+    // No row: the purchase isn't logged yet, so log it first (undo voids it).
+    let made = null;
+    if (!o.row) {
+      const a = Number(o.amount);
+      if (!(a > 0)) throw 'need the purchase or an amount';
+      made = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: a, merchant: String(o.merchant || g.name).slice(0, 60), category: CATEGORIES.indexOf(o.category) >= 0 ? o.category : 'Shopping', source: o.source || 'Cash', ref: 'ask-' + newId() });
+    }
+    const t = await getTx(made || o.row);
     if (t.type !== 'Expense' || t.goal_id) throw 'not a purchase';
     const have = (await select('goal_moves', eq('goal_id', g.id) + '&select=amount')).reduce((a, m) => a + Number(m.amount), 0);
     const amt = Number(t.amount);
     if (amt > have + 0.5) throw 'only ' + Math.round(have) + ' saved for ' + g.name;
     const undo = ctx.undo = [restoreOf('transactions', t), restoreOf('goals', g)];
+    if (made) undo.unshift(voidUndo(made)); // applied last when undone, after the row's restore
     await patchTx(t.n, { goal_id: g.id, review: false });
     const [paid] = await insert('goal_moves', [{ goal_id: g.id, amount: -amt, kind: 'purchase', tx_row: t.n, note: t.merchant }]);
     undo.push({ op: 'goal_unmove', id: Number(paid.id) });
