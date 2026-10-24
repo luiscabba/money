@@ -43,6 +43,7 @@ export async function readReceipt(image) {
     signal: AbortSignal.timeout(45000)
   });
   const j = await r.json();
+  if (j.type === 'error' || !r.ok) { console.error('receipt', JSON.stringify(j).slice(0, 400)); throw 'could not read it (' + ((j.error && j.error.message) || r.status) + ')'; }
   const use = (j.content || []).find((b) => b.type === 'tool_use');
   if (!use) throw 'could not read it';
   const x = use.input || {};
