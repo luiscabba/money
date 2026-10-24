@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
 import Seg from '../../components/Seg';
+import WorthSwitch from '../../components/WorthSwitch';
 import CountUp from '../../components/CountUp';
 import InvestChart from '../../components/InvestChart';
 import { peso, usd } from '../../lib/money';
@@ -43,7 +44,8 @@ export default function Invest() {
     const ibkr = ((data.netWorth || {}).accounts || []).find((a) => a.name === 'IBKR');
     return (
       <Shell glow="d">
-        <h1 className="h1">Invest</h1>
+        <h1 className="h1">Worth</h1>
+        <WorthSwitch on="invest" />
         <div className="glass card strong" style={{ borderRadius: 24 }}>
           <div className="small muted">IBKR</div>
           <div style={{ fontSize: 38, fontWeight: 800 }}>{ibkr ? usd(ibkr.balance) : '–'}</div>
@@ -57,15 +59,16 @@ export default function Invest() {
   return (
     <Shell glow="d">
       <div className="row">
-        <h1 className="h1">Invest</h1>
+        <h1 className="h1">Worth</h1>
         <Seg label="Currency" options={[['usd', 'USD'], ['php', 'PHP']]} value={cur} onChange={setCur} minWidth={52} />
       </div>
+      <WorthSwitch on="invest" />
 
       <div>
         <div className="small muted">Worth now</div>
         <div style={{ fontSize: 52, fontWeight: 800, lineHeight: 1, letterSpacing: '-0.02em' }}><CountUp key={cur} value={cur === 'usd' ? total : total * fx} format={cur === 'usd' ? usd : peso} /></div>
         <div className="small muted" style={{ marginTop: 4 }}>
-          {deposited !== null ? 'Deposited' : 'Cost + cash'} <b style={{ color: 'var(--ink)' }}>{money(base)}</b> · {totalGain >= 0 ? 'up' : 'down'} <b style={{ color: totalGain >= 0 ? 'var(--under)' : 'var(--over)' }}>{money(Math.abs(totalGain))} ({base ? (totalGain >= 0 ? '+' : '−') + Math.abs((totalGain / base) * 100).toFixed(1) : 0}%)</b>
+          {deposited !== null ? 'Deposited' : 'Cost + cash'} <b style={{ color: 'var(--ink)' }}>{money(base)}</b> · {totalGain >= 0 ? 'up' : 'down'} <b style={{ color: base && Math.abs(totalGain / base) < 0.001 ? 'var(--ink)' : totalGain >= 0 ? 'var(--under)' : 'var(--over)' }}>{money(Math.abs(totalGain))} ({base ? (totalGain >= 0 ? '+' : '−') + Math.abs((totalGain / base) * 100).toFixed(1) : 0}%)</b>
         </div>
         <div className="small muted">Invested {money(value)}{cash > 0.5 ? ' · Cash ' + money(cash) : ''}</div>
       </div>

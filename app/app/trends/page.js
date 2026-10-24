@@ -5,7 +5,6 @@ import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
 import Seg from '../../components/Seg';
 import CountUp from '../../components/CountUp';
-import { Delta } from '../../components/TrendPills';
 import { peso, manilaNow, MONTHS } from '../../lib/money';
 import { weekTrend, monthTrend, paceLines } from '../../lib/trends';
 
@@ -38,9 +37,8 @@ export default function Trends() {
         <div className="small muted">{M ? MONTHS[now.m - 1] + ' so far' : 'This week so far'}</div>
         <div className="row" style={{ justifyContent: 'flex-start', alignItems: 'baseline', gap: 10 }}>
           <div style={{ fontSize: 40, fontWeight: 800 }}><CountUp value={t.cur} format={peso} /></div>
-          <div style={{ fontSize: 15, fontWeight: 800 }}><Delta p={t.pct} /></div>
         </div>
-        <div className="small muted">{peso(t.prev)} at this point {M ? 'in ' + t.prevName : 'last week'}</div>
+        <div className="small" style={{ fontWeight: 700, color: !t.prev ? 'var(--muted)' : t.cur > t.prev ? 'var(--over)' : 'var(--under)' }}>{!t.prev ? 'Nothing to compare yet' : peso(Math.abs(t.cur - t.prev)) + (t.cur > t.prev ? ' more' : ' less') + ' than this point ' + (M ? 'in ' + t.prevName : 'last week')}</div>
       </div>
 
       <div className="glass card" style={{ padding: '14px 12px 10px', borderRadius: 26 }}>
@@ -58,20 +56,17 @@ export default function Trends() {
       </div>
 
       <div className="glass card strong" style={{ display: 'flex', flexDirection: 'column', gap: 14, borderRadius: 26 }}>
-        <div className="small muted">Movers · {t.note}</div>
+        <div className="small muted">What changed · {t.note}</div>
         {all.length === 0 && <div className="small muted">No change yet.</div>}
-        {all.map((x) => {
-          const p = x.pct === null ? 200 : x.pct;
-          const w = Math.min(Math.abs(p) / 200, 1) * 50;
+        {all.map((x, i) => {
           const up = x.change > 0;
           return (
-            <div key={x.name} style={{ display: 'grid', gridTemplateColumns: '100px minmax(0,1fr) 70px', alignItems: 'center', gap: 10, fontSize: 14 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</span>
-              <div style={{ position: 'relative', height: 10 }} aria-hidden="true">
-                <div style={{ position: 'absolute', left: '50%', top: -3, bottom: -3, width: 1, background: 'rgba(255,255,255,0.25)' }} />
-                <div key={mode} className="grow" style={{ position: 'absolute', top: 0, height: 10, borderRadius: 5, left: up ? '50%' : 50 - w + '%', width: Math.max(w, 2) + '%', background: up ? 'var(--over)' : 'var(--under)', transformOrigin: up ? 'left' : 'right', animationDelay: '0.2s' }} />
-              </div>
-              <span style={{ textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap' }}><Delta p={x.pct} /></span>
+            <div key={x.name} className="row" style={{ paddingBottom: i < all.length - 1 ? 12 : 0, borderBottom: i < all.length - 1 ? '1px solid rgba(255,255,255,0.08)' : 0 }}>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <b style={{ fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</b>
+                <span className="small muted">{peso(x.cur)} vs {peso(x.prev)}</span>
+              </span>
+              <b style={{ fontSize: 16, whiteSpace: 'nowrap', color: up ? 'var(--over)' : 'var(--under)' }}>{up ? '+' : '−'}{peso(Math.abs(x.change))}</b>
             </div>
           );
         })}

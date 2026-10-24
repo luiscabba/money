@@ -10,7 +10,6 @@ import TrendPanel from '../components/TrendPanel';
 import MonthCalendar from '../components/MonthCalendar';
 import ComingUp from '../components/ComingUp';
 import GapCard from '../components/GapCard';
-import { Delta } from '../components/TrendPills';
 import { enablePush } from '../components/SW';
 import { openTx, openAdd, askMoney } from '../components/apply';
 import { peso, MONTHS, WEEKDAYS, manilaNow, allowanceFor, netExpenses, needsReview, dayKey, sum, monthSpent, totalBudget, pad } from '../lib/money';
@@ -20,7 +19,6 @@ import { weekTrend, monthTrend } from '../lib/trends';
 const DAY = 86400000;
 const SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const labelOf = (k) => { const d = new Date(k + 'T12:00:00'); return SHORT[(d.getDay() + 6) % 7] + ', ' + MONTHS[d.getMonth()].slice(0, 3) + ' ' + d.getDate(); };
-const k = (n) => (n >= 1000 ? '₱' + (n / 1000).toFixed(1) + 'k' : peso(n));
 
 export default function Today() {
   const { data, error, at, offline } = useData();
@@ -136,13 +134,20 @@ export default function Today() {
         ))}
       </div>
 
-      <div className="row" style={{ padding: '0 4px', fontSize: 13 }}>
-        <button onClick={() => toggle('trend')} aria-expanded={panel === 'trend'} style={{ whiteSpace: 'nowrap', border: 0, background: 'transparent', padding: '8px 0', cursor: 'pointer', color: 'var(--muted)', fontSize: 13 }}>
-          Wk <b style={{ color: 'var(--ink)' }}>{k(w.cur)}</b> <b><Delta p={w.pct} quiet={w.prev < 300} /></b> · Mo <b style={{ color: 'var(--ink)' }}>{k(m.cur)}</b> <b><Delta p={m.pct} quiet={now.d < 4} /></b> {panel === 'trend' ? '▴' : '▾'}
-        </button>
-        <button onClick={() => toggle('month')} aria-expanded={panel === 'month'} style={{ border: 0, background: 'transparent', padding: '8px 0', cursor: 'pointer', color: 'var(--muted)', fontSize: 13 }}>
-          {panel === 'month' ? 'Hide' : 'Calendar ›'}
-        </button>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+        {[['This week', w.cur, w.prev, 'last week'], [MONTHS[now.m - 1], m.cur, m.prev, m.prevName]].map(([label, cur, prev, than]) => {
+          const d = Math.round(cur - prev);
+          return (
+            <button key={label} onClick={() => toggle('trend')} aria-expanded={panel === 'trend'} className="glass press" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '12px 14px', borderRadius: 20, textAlign: 'left', cursor: 'pointer' }}>
+              <span className="small muted">{label}</span>
+              <b style={{ fontSize: 20 }}>{peso(cur)}</b>
+              <span style={{ fontSize: 12, fontWeight: 700, color: !prev ? 'var(--muted)' : d > 0 ? 'var(--over)' : 'var(--under)' }}>{!prev ? 'Nothing to compare yet' : d === 0 ? 'Same as ' + than : peso(Math.abs(d)) + (d > 0 ? ' more than ' : ' less than ') + than}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="row" style={{ justifyContent: 'flex-end', padding: '0 4px', marginTop: -4 }}>
+        <button onClick={() => toggle('month')} aria-expanded={panel === 'month'} style={{ minHeight: 36, border: 0, background: 'transparent', padding: 0, cursor: 'pointer', color: 'var(--muted)', fontSize: 13 }}>{panel === 'month' ? 'Hide' : 'Calendar ›'}</button>
       </div>
       {panel === 'trend' && <TrendPanel data={data} now={now} />}
       {panel === 'month' && <MonthCalendar data={data} now={now} picked={pick && (Number(pick.slice(0, 4)) + '-' + Number(pick.slice(5, 7)) + '-' + Number(pick.slice(8, 10)))} onPick={(y, mo, d) => setPick(dayKey(y, mo, d))} />}

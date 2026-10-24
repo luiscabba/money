@@ -5,7 +5,9 @@ import Shell, { Loading } from '../../components/Shell';
 import useData from '../../components/useData';
 import CountUp from '../../components/CountUp';
 import Seg from '../../components/Seg';
-import { peso, usd, manilaNow, avgMonthlySpend, pad, netExpenses, appWallets } from '../../lib/money';
+import WorthSwitch from '../../components/WorthSwitch';
+import { change } from '../../components/apply';
+import { peso, usd, manilaNow, pad, netExpenses, appWallets, daysIn, totalBudget } from '../../lib/money';
 
 const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA', 'App wallets': '#FFD166' };
 
@@ -14,6 +16,8 @@ export default function NetWorth() {
   const now = useToday();
   const [sel, setSel] = useState(-1);
   const [span, setSpan] = useState('30');
+  const [bal, setBal] = useState('');
+  const [busy, setBusy] = useState(false);
   if (!data) return <Shell glow="a"><Loading error={error} /></Shell>;
 
   const wallets = appWallets(data);
@@ -22,13 +26,15 @@ export default function NetWorth() {
     .concat(walletTotal > 0 ? [{ name: 'App wallets', currency: 'PHP', balance: walletTotal, php: walletTotal, wallets }] : []);
   const total = acc.reduce((a, x) => a + x.php, 0);
   const cash = acc.filter((a) => a.name !== 'IBKR').reduce((a, x) => a + x.php, 0);
-  const avg = avgMonthlySpend(data, now);
-  const runway = avg ? cash / avg : 0;
   const prefix = now.y + '-' + pad(now.m) + '-';
   const mtx = data.transactions.filter((t) => t.date.startsWith(prefix));
   const income = mtx.filter((t) => t.type === 'Income').reduce((a, t) => a + t.amount, 0);
   const spent = netExpenses(data).filter((t) => t.date.startsWith(prefix)).reduce((a, t) => a + t.amount, 0);
   const kept = income ? Math.round(((income - spent) / income) * 100) : null;
+  const invested = (acc.find((a) => a.name === 'IBKR') || {}).php || 0;
+  const budget = totalBudget(data);
+  const pace = Math.round((spent / now.d) * daysIn(now.y, now.m));
+  const forGoals = (data.goalPlan && data.goalPlan.tagged) || 0;
   const hist = data.netWorth.history || [];
   const prevRow = hist.length > 1 ? hist[hist.length - 2] : null;
   const prev = prevRow ? prevRow.total : null;
@@ -45,7 +51,7 @@ export default function NetWorth() {
     const padv = (hi - lo || hi * 0.02) * 0.15;
     const X = (i) => 4 + (i / (tl.length - 1)) * 326, Y = (v) => 6 + (1 - (v - lo + padv) / (hi - lo + 2 * padv)) * 70;
     const line = tl.map((h, i) => X(i).toFixed(1) + ',' + Y(h.total).toFixed(1)).join(' ');
-    trend = { line, area: X(0) + ',82 ' + line + ' ' + X(tl.length - 1) + ',82', change: tl[tl.length - 1].total - tl[0].total, first: tl[0].date, end: [X(tl.length - 1), Y(tl[tl.length - 1].total)] };
+    trend = { line, area: X(0) + ',82 ' + line + ' ' + X(tl.length - 1) + ',82', change: tl[tl.length - 1].total - tl[0].total, points: tl.length, first: tl[0].date, end: [X(tl.length - 1), Y(tl[tl.length - 1].total)] };
   }
   const stale = acc.filter((a) => a.name !== 'IBKR' && a.asOf && (Date.now() - new Date(a.asOf).getTime()) / 86400000 > 30).map((a) => a.name);
 
@@ -63,9 +69,11 @@ export default function NetWorth() {
   return (
     <Shell glow="a">
       <div className="row" style={{ alignItems: 'baseline' }}>
-        <h1 className="h1">Net Worth</h1>
+        <h1 className="h1">Worth</h1>
         <div className="small muted">{prev !== null ? (total - prev >= 0 ? '+' : '−') + peso(Math.abs(total - prev)) + ' ' + sinceLabel(prevRow.date) : 'tracking since ' + (hist[0] ? hist[0].date.slice(5) : 'today')}</div>
       </div>
+
+      <WorthSwitch on="accounts" />
 
       <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', height: 250 }}>
         <svg width="240" height="240" viewBox="0 0 240 240" role="img" aria-label={'Net worth ' + peso(total) + ' split by account'}>
@@ -87,6 +95,7 @@ export default function NetWorth() {
             <div className="small"><span className="muted">{span} days </span><b style={{ color: trend.change >= 0 ? 'var(--under)' : 'var(--over)' }}>{trend.change >= 0 ? '+' : '−'}{peso(Math.abs(trend.change))}</b></div>
             <Seg label="Span" options={[['30', '30D'], ['90', '90D']]} value={span} onChange={setSpan} minWidth={44} />
           </div>
+          {trend.points < 5 && <div className="small muted" style={{ padding: '0 4px' }}>Fills in as days are recorded.</div>}
           <svg width="100%" viewBox="0 0 334 84" role="img" aria-label={'Net worth over the last ' + span + ' days'}>
             <polygon className="fadein" points={trend.area} fill="rgba(77,124,255,0.16)" />
             <polyline key={span} className="draw" pathLength="1" points={trend.line} fill="none" stroke="#4D7CFF" strokeWidth="2.6" strokeLinejoin="round" />
@@ -108,14 +117,47 @@ export default function NetWorth() {
           <div key={w.name} className="row rise" style={{ minHeight: 34, padding: '0 12px 0 34px', fontSize: 13, color: 'var(--muted)' }}>
             <span>{w.name.replace(/\s*wallet$/i, '')}</span><span>{peso(w.php)}</span>
           </div>
-        ))] : [row]))}
+        ))] : sel === i && acc[i].name !== 'App wallets' ? [row, (
+          <form key={'set-' + acc[i].name} className="rise" onSubmit={async (e) => {
+            e.preventDefault();
+            const v = Number(String(bal).replace(/[^\d.]/g, ''));
+            if (!(v >= 0) || bal === '') return;
+            setBusy(true);
+            const r = await change([{ op: 'set_balance', account: acc[i].name, amount: v }], acc[i].name + ' set to ' + (acc[i].currency === 'USD' ? usd(v) : peso(v)));
+            setBusy(false); if (r.ok) { setBal(''); setSel(-1); }
+          }} style={{ display: 'flex', gap: 8, padding: '4px 6px 8px 28px' }}>
+            <input className="input" inputMode="decimal" aria-label={'New ' + acc[i].name + ' balance'} placeholder={'Set balance, now ' + (acc[i].currency === 'USD' ? usd(acc[i].balance) : peso(acc[i].php))} value={bal} onChange={(e) => setBal(e.target.value)} style={{ minHeight: 44, fontSize: 16 }} />
+            <button className="chip on" disabled={busy || bal === ''} type="submit" style={{ minHeight: 44 }}>Set</button>
+          </form>
+        )] : [row]))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
-        <div className="glass card"><div className="small muted">Cash runway</div><div style={{ fontSize: 22, fontWeight: 800 }}>{runway ? runway.toFixed(1) + ' months' : '–'}</div></div>
-        <div className="glass card"><div className="small muted">Kept this month</div><div style={{ fontSize: 22, fontWeight: 800 }}>{kept === null ? '–' : kept + '%'}</div></div>
+        <Stat label="Savings rate" value={kept === null ? '–' : kept + '%'} sub={income ? peso(Math.max(0, income - spent)) + ' kept of ' + peso(income) + ' in' : 'No income logged this month'} pct={kept === null ? null : Math.max(0, kept) / 100} color="var(--under)" />
+        <Stat label="Invested" value={total ? Math.round((invested / total) * 100) + '%' : '–'} sub={peso(invested) + ' in IBKR'} pct={total ? invested / total : null} color="#F0974F" />
+        <Stat label={MONTH_NAMES[now.m - 1] + ' pace'} value={peso(pace)} valueColor={pace > budget ? 'var(--over)' : undefined} sub={pace > budget ? peso(pace - budget) + ' over the ' + peso(budget) + ' budget' : peso(budget - pace) + ' under the ' + peso(budget) + ' budget'} pct={budget ? Math.min(1, pace / Math.max(pace, budget)) : null} mark={budget && pace > budget ? budget / pace : null} color={pace > budget ? 'var(--over)' : 'var(--under)'} />
+        <Stat label="For goals" value={peso(forGoals)} sub="Set aside in Maya" pct={cash ? Math.min(1, forGoals / cash) : null} color="#C38BFF" />
       </div>
       {stale.length > 0 && <div className="small" style={{ color: 'var(--ahead)' }}>Update {stale.join(', ')}: last balance is over 30 days old.</div>}
     </Shell>
+  );
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// One small metric: label, value, an optional bar (with a tick where a limit sits), and a line under it.
+function Stat({ label, value, sub, pct, color, mark, valueColor }) {
+  return (
+    <div className="glass card" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div className="small muted">{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: valueColor }}>{value}</div>
+      {pct !== null && pct !== undefined && (
+        <div aria-hidden="true" style={{ position: 'relative', height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.12)' }}>
+          <div style={{ width: Math.max(2, Math.round(pct * 100)) + '%', height: 6, borderRadius: 3, background: color }} />
+          {mark && <div style={{ position: 'absolute', left: Math.round(mark * 100) + '%', top: -3, width: 2, height: 12, background: 'var(--ink)' }} />}
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: 'var(--muted)' }}>{sub}</div>
+    </div>
   );
 }
