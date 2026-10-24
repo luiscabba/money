@@ -213,7 +213,10 @@ async function claimReceipt(tx) {
     const receipt = /receipt/i.test(r.source);
     if (!told && !receipt) continue;
     if (told && /^cash$/i.test(String(r.source).trim())) continue; // paid in cash: not this wallet payment
-    if (!sameAmt(r.amount, tx.amount)) continue;
+    // A receipt split into categories is one payment: the row plus its split- rows (same time and wallet).
+    const parts = told ? rows.filter((x) => x.n !== r.n && /^split-/.test(x.ref) && x.ts === r.ts && x.source === r.source) : [];
+    const sum = Number(r.amount) + parts.reduce((a, x) => a + Number(x.amount), 0);
+    if (!sameAmt(r.amount, tx.amount) && !(parts.length && sameAmt(sum, tx.amount))) continue;
     const dt = Math.abs(new Date(r.ts).getTime() - tx.date.getTime());
     if (dt >= (told ? 36 * 60 : 90) * 60000) continue;
     const rowAcct = sourceAccount(r.source);
@@ -222,6 +225,7 @@ async function claimReceipt(tx) {
     if (told) patch.ts = tx.date.toISOString();
     if (r.category && r.category !== 'Other') patch.review = false;
     await update('transactions', eq('n', r.n), patch);
+    if (!sameAmt(r.amount, tx.amount)) for (const x of parts) await update('transactions', eq('n', x.n), { source: tx.source, ts: patch.ts || x.ts });
     return true;
   }
   return false;
@@ -363,8 +367,9 @@ export async function takeSmsRow(c) {
     (String(r.source).split(' ')[0] === bank && (r.type === tx.type || r.type === 'Void') && sameShop(r.merchant, tx.merchant)) ||
     (tx.type === 'Transfer Out' && r.type === 'Transfer Out') ||
     (r.type === 'Expense' && /^QR Ph payment/.test(r.merchant))))) return { result: 'duplicate' };
-  const told = await select('transactions', near(tx.date, 36 * 60) + '&ref=like.ask-*&select=amount,source');
-  if (told.some((r) => sameAmt(r.amount, tx.amount) && String(r.source).split(' ')[0] === bank)) return { result: 'duplicate' };
+  const near36 = await select('transactions', near(tx.date, 36 * 60) + '&or=(ref.like.ask-*,ref.like.split-*)&type=neq.Void&select=n,ts,amount,source,ref');
+  const told = near36.filter((r) => /^ask-/.test(r.ref)).map((r) => ({ ...r, sum: Number(r.amount) + near36.filter((x) => /^split-/.test(x.ref) && x.ts === r.ts && x.source === r.source).reduce((a, x) => a + Number(x.amount), 0) }));
+  if (told.some((r) => (sameAmt(r.amount, tx.amount) || sameAmt(r.sum, tx.amount)) && String(r.source).split(' ')[0] === bank)) return { result: 'duplicate' };
   if (/^Send to /.test(tx.merchant)) {
     const known = await recipientRule(tx.merchant);
     if (known === 'Transfer') { tx.type = 'Transfer Out'; tx.category = 'Transfer'; }

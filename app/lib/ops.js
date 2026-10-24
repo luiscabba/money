@@ -113,7 +113,10 @@ async function one(o, ctx = {}) {
     // A purchase that looks like a funded goal's gets the same "pay it from the goal?" card as a wallet text.
     const g = await matchGoal({ type: 'Expense', amount: amt }).catch(() => null);
     if (g) await addMatch(n, g.id).catch(() => null);
-    return [voidUndo(n), ...closed.map((p) => restoreOf('plans', p))];
+    // A receipt with several categories: the row is split right away (undo puts it back whole, then voids it).
+    ctx.undo = [voidUndo(n)]; // if the split fails, the new row is voided again
+    const split = Array.isArray(o.parts) && o.parts.length > 1 ? await one({ op: 'split', row: n, parts: o.parts }) : [];
+    return [voidUndo(n), ...closed.map((p) => restoreOf('plans', p)), ...split];
   }
   if (op === 'add_owed') {
     const amt = Number(o.amount);

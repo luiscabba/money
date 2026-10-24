@@ -5,6 +5,7 @@ import { applyOps } from '../../../lib/ops';
 import { safeToSpend } from '../../../lib/safe';
 import { manilaDay, peso } from '../../../lib/core';
 import { ASK_MODEL, OPS, TOOLS, buildPrompt } from '../../../lib/askPrompt';
+import { readReceipt, receiptOp } from '../../../lib/receipt';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,18 @@ export async function POST(req) {
     const bad = res.filter((r) => !r.ok);
     if (bad.length) return NextResponse.json({ say: "Didn't save: " + bad.map((b) => b.error).join(', '), id: '' });
     return NextResponse.json({ say: 'Logged. ' + (await leftToday()) + ' Ask Moni to undo it if needed.', id: '' });
+  }
+
+  // A receipt photo or order screenshot shared to the Shortcut: read it, then ask to confirm like a spoken one.
+  if (body.image) {
+    let r;
+    try { r = await readReceipt(body.image); } catch (e) { return NextResponse.json({ say: "Couldn't read that: " + String(e && e.message ? e.message : e) + '.', id: '' }); }
+    const op = receiptOp(r, r.wallet);
+    const id = randomBytes(6).toString('hex');
+    await setSetting(PENDING, pending.concat({ id, ops: [op], at: now }).slice(-5));
+    const cats = r.parts.map((p) => p.category);
+    const catText = cats.length > 1 ? cats.slice(0, -1).join(', ') + ' and ' + cats[cats.length - 1] : cats[0];
+    return NextResponse.json({ say: 'Log ' + peso(r.total) + ' at ' + r.merchant + ', ' + catText + (r.wallet ? ', paid with ' + r.wallet : ', as cash') + '?', id });
   }
 
   // Step 1: his words.
