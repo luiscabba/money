@@ -36,9 +36,9 @@ export async function readReceipt(image) {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': process.env.CLAUDE_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
-      model: ASK_MODEL, max_tokens: 800, tools: [TOOL], tool_choice: { type: 'tool', name: 'receipt' },
+      model: ASK_MODEL, max_tokens: 800, tools: [TOOL],
       system: 'You read receipts, bills and order screenshots for a personal spending tracker in the Philippines (amounts in PHP). Categories: ' + SPEND.join(', ') + '. Groceries are supermarket food and household basics; Food & Drinks is restaurants, cafes and delivered meals; Personal Care is toiletries, haircuts and pharmacy beauty items.',
-      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: media, data } }, { type: 'text', text: 'Read this.' }] }]
+      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: media, data } }, { type: 'text', text: 'Read this and answer only by calling the receipt tool.' }] }]
     }),
     signal: AbortSignal.timeout(45000)
   });
