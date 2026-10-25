@@ -34,7 +34,8 @@ export async function addTx(tx) {
   const row = {
     ts: (tx.date instanceof Date ? tx.date : parseWhen(tx.date)).toISOString(), type: tx.type, amount: Math.round(Number(tx.amount) * 100) / 100,
     merchant: String(tx.merchant || ''), category: tx.category || '', source: tx.source || '', ref: tx.ref || '',
-    review: !!(tx.review || tx.category === 'Other'), note: tx.note || ''
+    // Rows Luis logged himself are settled; only rows the app guessed at (Other) wait for review.
+    review: tx.review !== undefined ? !!tx.review : tx.category === 'Other', note: tx.note || ''
   };
   const [saved] = await insert('transactions', [row]);
   const n = Number(saved.n);
@@ -109,7 +110,7 @@ async function one(o, ctx = {}) {
     const amt = Number(o.amount);
     if (!(amt > 0) || CATEGORIES.indexOf(o.category) < 0) throw 'bad amount or category';
     const closed = [];
-    const n = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '', closed });
+    const n = await addTx({ review: false, date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '', closed });
     // A purchase that looks like a funded goal's gets the same "pay it from the goal?" card as a wallet text.
     const g = await matchGoal({ type: 'Expense', amount: amt }).catch(() => null);
     if (g) await addMatch(n, g.id).catch(() => null);
@@ -211,7 +212,8 @@ async function one(o, ctx = {}) {
   }
   if (op === 'set_note') {
     const t = await getTx(o.row);
-    await patchTx(t.n, { note: String(o.note || '').slice(0, 120) });
+    // Explaining a row settles it. Moni sometimes sends the note as text.
+    await patchTx(t.n, { note: String(o.note || o.text || '').slice(0, 120), review: false });
     return [restoreOf('transactions', t)];
   }
   if (op === 'edit_tx') {
@@ -223,8 +225,8 @@ async function one(o, ctx = {}) {
     if (o.source) patch.source = String(o.source).slice(0, 30);
     if (o.merchant) patch.merchant = String(o.merchant).slice(0, 60);
     if (o.type) { if (!['Expense', 'Income', 'Refund', 'Transfer In', 'Transfer Out', 'Cash Withdrawal'].includes(o.type)) throw 'bad type'; patch.type = o.type; }
-    if (o.category) { if (CATEGORIES.indexOf(o.category) < 0 && o.category !== 'Transfer') throw 'bad category'; patch.category = o.category; patch.review = false; }
-    if (Object.keys(patch).length) await patchTx(t.n, patch);
+    if (o.category) { if (CATEGORIES.indexOf(o.category) < 0 && o.category !== 'Transfer') throw 'bad category'; patch.category = o.category; }
+    if (Object.keys(patch).length) await patchTx(t.n, { ...patch, review: false }); // an edited row has been looked at
     return [restoreOf('transactions', t)];
   }
   if (op === 'void') {
@@ -271,7 +273,7 @@ async function one(o, ctx = {}) {
     const amt = Number(o.amount);
     if (TYPES.indexOf(o.type) < 0 || !(amt > 0)) throw 'need a type and amount';
     const category = /^Transfer/.test(o.type) ? 'Transfer' : o.type === 'Refund' && CATEGORIES.indexOf(o.category) >= 0 ? o.category : '';
-    const n = await addTx({ date: when(o.date) || new Date(), type: o.type, amount: amt, merchant: String(o.merchant || o.type).slice(0, 60), category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
+    const n = await addTx({ review: false, date: when(o.date) || new Date(), type: o.type, amount: amt, merchant: String(o.merchant || o.type).slice(0, 60), category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
     return [voidUndo(n)];
   }
   if (op === 'edit_owed') {

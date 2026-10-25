@@ -4,10 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Moni from './Moni';
 
-// Four tabs with Moni raised in the middle. Invest lives inside Worth (its second tab), so /invest lights Worth.
+// Four tabs, with Moni in its own circle to the right. Invest lives inside Worth (its second tab), so /invest lights Worth.
 export const TABS = [['/', 'Today'], ['/trends', 'Trends'], ['/budgets', 'Budgets'], ['/networth', 'Worth']];
 const TAB_OF = { '/invest': '/networth' };
-const MID = 76; // the gap the Moni orb sits in
 
 let lastTab = -1;
 
@@ -29,13 +28,13 @@ export default function Shell({ children, glow = 'a', tabs = true }) {
       <div className="blob b3" aria-hidden="true" />
       <main className="page">{children}</main>
       {tabs && (
-        <nav className="tabs glass" aria-label="Main" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr ' + MID + 'px 1fr 1fr' }}>
-          {shown >= 0 && <span className="tabthumb" aria-hidden="true" style={{ width: `calc((100% - 12px - ${MID}px) / 4)`, transform: `translateX(calc(${shown * 100}% + ${shown >= 2 ? MID : 0}px))` }} />}
-          {TABS.slice(0, 2).map(([href, label]) => <Link key={href} href={href} className={'tab' + (here === href ? ' on' : '')} aria-current={here === href ? 'page' : undefined}>{label}</Link>)}
-          <span aria-hidden="true" />
-          {TABS.slice(2).map(([href, label]) => <Link key={href} href={href} className={'tab' + (here === href ? ' on' : '')} aria-current={here === href ? 'page' : undefined}>{label}</Link>)}
-          <button className="moni-orb" aria-label="Ask Moni" onClick={() => window.dispatchEvent(new CustomEvent('money:ask', { detail: '' }))}><Moni size={58} mood="idle" /></button>
-        </nav>
+        <div className="tabrow">
+          <nav className="tabs glass" aria-label="Main" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+            {shown >= 0 && <span className="tabthumb" aria-hidden="true" style={{ width: 'calc((100% - 12px) / 4)', transform: `translateX(${shown * 100}%)` }} />}
+            {TABS.map(([href, label]) => <Link key={href} href={href} className={'tab' + (here === href ? ' on' : '')} aria-current={here === href ? 'page' : undefined}>{label}</Link>)}
+          </nav>
+          <button className="moni-orb glass" aria-label="Ask Moni" onClick={() => window.dispatchEvent(new CustomEvent('money:ask', { detail: '' }))}><Moni size={46} mood="idle" /></button>
+        </div>
       )}
     </div>
   );

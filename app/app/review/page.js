@@ -32,6 +32,8 @@ export default function Review() {
     setPicked((p) => { const n = { ...p }; list.forEach(([t], i) => { if (!res[i].ok) delete n[t.row]; }); return n; });
     setFailed((f) => { const n = { ...f }; list.forEach(([t], i) => { n[t.row] = !res[i].ok; }); return n; });
     const saved = list.filter((x, i) => res[i].ok);
+    // Refresh so Today, the badge and Moni stop asking about rows that are now sorted.
+    if (saved.length) reload(true);
     if (saved.length) toast(saved.length === 1 ? saved[0][0].merchant + ' → ' + (saved[0][1] === 'Transfer' ? 'Not spending' : saved[0][1]) : saved.length + ' sorted', r.undo);
     setBusy(null);
   };
