@@ -82,16 +82,17 @@ export async function POST(req) {
             }
           }
         }
-        let actions = [], replies = [], mood = '';
+        let actions = [], replies = [], mood = '', visuals = [];
         Object.values(blocks).forEach((b) => {
           if (b.type !== 'tool_use') return;
           let input = {};
           try { input = JSON.parse(b.json || '{}'); } catch (e) { input = {}; }
           if (b.name === 'propose_changes') actions = actions.concat((input.changes || []).filter((c) => c && OPS.includes(c.op)));
           if (b.name === 'set_mood') mood = String(input.mood || '');
+          if (b.name === 'show_visual') visuals = (input.visuals || []).filter((v) => v && ['bars', 'columns', 'table', 'whatif'].includes(v.kind)).slice(0, 2);
           if (b.name === 'follow_ups') replies = (input.replies || []).filter((r) => typeof r === 'string').slice(0, 3);
         });
-        send({ actions: actions.slice(0, 20), replies, mood });
+        send({ actions: actions.slice(0, 20), replies, mood, visuals });
       } catch (e) {
         send({ d: '\n(Connection dropped. Try again.)' });
       }
