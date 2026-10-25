@@ -102,7 +102,7 @@ export default function MoneyIn() {
         const tiny = g.list.filter((t) => !small && isSmall(t));
         return (
           <div key={g.label} className="glass card strong rise" style={{ display: 'flex', flexDirection: 'column', gap: 4, borderRadius: 22 }}>
-            <div className="row small" style={{ fontWeight: 700, color: 'var(--muted)' }}><span>{g.label}</span><span style={{ color: 'var(--under)' }}>+{peso(g.list.reduce((a, t) => a + t.amount, 0))}</span></div>
+            <div className="row small" style={{ fontWeight: 700, color: 'var(--muted)' }}><span>{g.label}</span><span style={{ color: 'var(--under)' }}>+{exact(g.list.reduce((a, t) => a + t.amount, 0))}</span></div>
             {big.map((t) => (
               <button key={t.row} onClick={() => openTx(t)} className="row press" style={{ width: '100%', border: 0, background: 'transparent', padding: '6px 0', textAlign: 'left', cursor: 'pointer', fontSize: 14 }}>
                 <span style={{ minWidth: 0 }}>

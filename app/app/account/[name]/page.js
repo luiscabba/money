@@ -86,7 +86,7 @@ export default function Account({ params }) {
   const groups = [];
   shown.forEach((t) => { const g = groupOf(t); if (!groups.length || groups[groups.length - 1].label !== g) groups.push({ label: g, list: [] }); groups[groups.length - 1].list.push(t); });
   const net = (list) => list.reduce((a, t) => a + (direction(t) === 'in' ? t.amount : direction(t) === 'out' ? -t.amount : 0), 0);
-  const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + peso(Math.abs(n));
+  const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + exact(Math.abs(n));
   const when = (t) => {
     const g = groupOf(t);
     const time = new Date(t.date.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
