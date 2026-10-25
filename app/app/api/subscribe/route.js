@@ -7,7 +7,7 @@ import { push } from '../../../lib/push';
 export async function POST(req) {
   const { subscription, test } = await req.json();
   if (useDb()) {
-    if (test) return NextResponse.json({ ok: true, sent: await push('Test from Money', 'Push is working.', '/') });
+    if (test) return NextResponse.json({ ok: true, sent: await push('Test from Moni', 'Push is working.', '/') });
     if (!subscription || !subscription.endpoint) return NextResponse.json({ error: 'no subscription' }, { status: 400 });
     await addDevice(subscription);
     return NextResponse.json({ ok: true });

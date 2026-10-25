@@ -1,6 +1,6 @@
 // Pages open from the last saved copy when the server is slow or down; data comes from the
 // phone's saved copy (useData) and refreshes in the background.
-const CACHE = 'money-shell-v2';
+const CACHE = 'money-shell-v3';
 const WAIT_MS = 3500;
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -9,9 +9,9 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
   await self.clients.claim();
 })()));
 
-const OFFLINE = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Money</title>' +
+const OFFLINE = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Moni</title>' +
   '<body style="background:#07090d;color:#e8eaf0;font:16px -apple-system,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;text-align:center">' +
-  '<div><p>Money can\'t reach the server.</p><p style="opacity:.6">Retrying&hellip;</p></div>' +
+  '<div><p>Moni can\'t reach the server.</p><p style="opacity:.6">Retrying&hellip;</p></div>' +
   '<script>setTimeout(function(){location.reload()},4000)</script>';
 
 async function savePage(req, res) {
@@ -56,8 +56,8 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   let d = {};
-  try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: 'Money', body: event.data && event.data.text() }; }
-  event.waitUntil(self.registration.showNotification(d.title || 'Money', {
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: 'Moni', body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(d.title || 'Moni', {
     body: d.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',

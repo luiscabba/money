@@ -73,7 +73,7 @@ async function eveningCheck() {
   if (review) parts.push(review + (review === 1 ? ' payment' : ' payments') + ' to explain');
   if (g) parts.push(g + ' untracked ' + (g === 1 ? 'amount' : 'amounts'));
   if (over > 0) parts.push(peso(over) + ' over today');
-  if (parts.length) await push('Money check-in', parts.join(' · ') + '. Tap to sort it out.', '/?ask=checkin');
+  if (parts.length) await push('Moni check-in', parts.join(' · ') + '. Tap to sort it out.', '/?ask=checkin');
   // Tomorrow's calendar events with a place: a heads-up with the budget it comes out of.
   const [y, m, d] = manilaDay().split('-').map(Number);
   const tmr = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
@@ -88,8 +88,8 @@ async function eveningCheck() {
 
 const JOBS = {
   // A push from the Apps Script itself (e.g. the IBKR sync failed).
-  push: (b) => push(String(b.title || 'Money').slice(0, 80), String(b.body || '').slice(0, 200), b.url || '/'),
-  'daily-close': dailyClose, 'weekly-recap': weeklyRecap, 'evening-check': eveningCheck, 'goal-sweep': async () => { const r = await sweepWeek(); if (r.push) await push(...r.push); return r; }, 'test-push': () => push('Test from Money', 'Push is working.', '/') };
+  push: (b) => push(String(b.title || 'Moni').slice(0, 80), String(b.body || '').slice(0, 200), b.url || '/'),
+  'daily-close': dailyClose, 'weekly-recap': weeklyRecap, 'evening-check': eveningCheck, 'goal-sweep': async () => { const r = await sweepWeek(); if (r.push) await push(...r.push); return r; }, 'test-push': () => push('Test from Moni', 'Push is working.', '/') };
 
 export async function POST(req, { params }) {
   if (!authorizedApp(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

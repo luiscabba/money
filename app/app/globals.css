@@ -180,3 +180,9 @@ svg[role="img"], svg[aria-hidden="true"] { overflow: visible; }
 /* Moni raised in the middle of the tab bar. */
 .moni-orb { position: absolute; left: 50%; top: -32px; width: 70px; height: 70px; margin-left: -35px; border-radius: 35px; border: 4px solid var(--bg); background: var(--bg); padding: 2px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; box-shadow: 0 8px 26px rgba(122, 108, 255, 0.4); }
 .moni-orb:active { transform: scale(0.94); }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@keyframes hop { 0% { transform: scale(0.9); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+.hop { animation: hop 0.35s cubic-bezier(0.3, 1.4, 0.5, 1); }
+.moni.m-shy .d-glass { animation: mo-breathe 3s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .hop { animation: none; } }

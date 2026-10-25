@@ -3,11 +3,11 @@ import SW from '../components/SW';
 import Overlays from '../components/Overlays';
 
 export const metadata = {
-  title: 'Money',
-  description: 'Daily money rings',
+  title: 'Moni',
+  description: 'Your money, with Moni',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, title: 'Money', statusBarStyle: 'black-translucent' },
-  icons: { icon: '/icon-192.png', apple: '/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'Moni', statusBarStyle: 'black-translucent' },
+  icons: { icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/favicon-32.png', sizes: '32x32' }], apple: '/apple-touch-icon.png' },
   robots: { index: false, follow: false }
 };
 

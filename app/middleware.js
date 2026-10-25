@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { COOKIE, validToken } from './lib/session';
 
-const OPEN = ['/login', '/api/login', '/api/push', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon.ico'];
+const OPEN = ['/login', '/api/login', '/api/push', '/manifest.webmanifest', '/sw.js', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon.ico', '/favicon.svg', '/favicon-32.png'];
 
 export async function middleware(req) {
   const { pathname } = req.nextUrl;
