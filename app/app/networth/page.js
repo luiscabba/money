@@ -6,7 +6,8 @@ import useData from '../../components/useData';
 import CountUp from '../../components/CountUp';
 import Seg from '../../components/Seg';
 import WorthSwitch from '../../components/WorthSwitch';
-import { change } from '../../components/apply';
+import Link from 'next/link';
+import { earnedIn } from '../../lib/flow';
 import { peso, usd, manilaNow, pad, netExpenses, appWallets, daysIn, totalBudget } from '../../lib/money';
 
 const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA', 'App wallets': '#FFD166' };
@@ -14,10 +15,8 @@ const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38
 export default function NetWorth() {
   const { data, error } = useData();
   const now = useToday();
-  const [sel, setSel] = useState(-1);
+  const sel = -1;
   const [span, setSpan] = useState('30');
-  const [bal, setBal] = useState('');
-  const [busy, setBusy] = useState(false);
   if (!data) return <Shell glow="a"><Loading error={error} /></Shell>;
 
   const wallets = appWallets(data);
@@ -28,7 +27,8 @@ export default function NetWorth() {
   const cash = acc.filter((a) => a.name !== 'IBKR').reduce((a, x) => a + x.php, 0);
   const prefix = now.y + '-' + pad(now.m) + '-';
   const mtx = data.transactions.filter((t) => t.date.startsWith(prefix));
-  const income = mtx.filter((t) => t.type === 'Income').reduce((a, t) => a + t.amount, 0);
+  // Income plus money people sent (family included); moving your own money between accounts doesn't count.
+  const income = earnedIn(data, prefix);
   const spent = netExpenses(data).filter((t) => t.date.startsWith(prefix)).reduce((a, t) => a + t.amount, 0);
   const kept = income ? Math.round(((income - spent) / income) * 100) : null;
   const invested = (acc.find((a) => a.name === 'IBKR') || {}).php || 0;
@@ -105,35 +105,20 @@ export default function NetWorth() {
       )}
 
       <div className="glass card strong" style={{ padding: 6, display: 'flex', flexDirection: 'column' }}>
-        {acc.map((a, i) => (
-          <button key={a.name} onClick={() => setSel(sel === i ? -1 : i)} aria-pressed={sel === i}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 46, padding: '0 12px', border: 0, borderRadius: 16, cursor: 'pointer', fontSize: 15, fontWeight: 700, background: sel === i ? 'rgba(255,255,255,0.14)' : 'transparent' }}>
-            <span style={{ width: 10, height: 10, borderRadius: 5, background: COLORS[a.name] || '#8A93A6' }} />
+        {acc.map((a) => (
+          <Link key={a.name} href={a.name === 'IBKR' ? '/invest' : '/account/' + encodeURIComponent(a.name)} className="press"
+            style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 46, padding: '0 8px 0 12px', borderRadius: 16, fontSize: 15, fontWeight: 700, textDecoration: 'none' }}>
+            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 5, background: COLORS[a.name] || '#8A93A6' }} />
             <span style={{ flex: 1, textAlign: 'left' }}>{a.name}</span>
             <span className="muted" style={{ fontWeight: 500 }}>{(a.php / total) * 100 < 1 ? '<1' : Math.round((a.php / total) * 100)}%</span>
             <span style={{ minWidth: 86, textAlign: 'right' }}>{peso(a.php)}</span>
-          </button>
-        )).flatMap((row, i) => (acc[i].wallets && sel === i ? [row, ...acc[i].wallets.map((w) => (
-          <div key={w.name} className="row rise" style={{ minHeight: 34, padding: '0 12px 0 34px', fontSize: 13, color: 'var(--muted)' }}>
-            <span>{w.name.replace(/\s*wallet$/i, '')}</span><span>{peso(w.php)}</span>
-          </div>
-        ))] : sel === i && acc[i].name !== 'App wallets' ? [row, (
-          <form key={'set-' + acc[i].name} className="rise" onSubmit={async (e) => {
-            e.preventDefault();
-            const v = Number(String(bal).replace(/[^\d.]/g, ''));
-            if (!(v >= 0) || bal === '') return;
-            setBusy(true);
-            const r = await change([{ op: 'set_balance', account: acc[i].name, amount: v }], acc[i].name + ' set to ' + (acc[i].currency === 'USD' ? usd(v) : peso(v)));
-            setBusy(false); if (r.ok) { setBal(''); setSel(-1); }
-          }} style={{ display: 'flex', gap: 8, padding: '4px 6px 8px 28px' }}>
-            <input className="input" inputMode="decimal" aria-label={'New ' + acc[i].name + ' balance'} placeholder={'Set balance, now ' + (acc[i].currency === 'USD' ? usd(acc[i].balance) : peso(acc[i].php))} value={bal} onChange={(e) => setBal(e.target.value)} style={{ minHeight: 44, fontSize: 16 }} />
-            <button className="chip on" disabled={busy || bal === ''} type="submit" style={{ minHeight: 44 }}>Set</button>
-          </form>
-        )] : [row]))}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C6370" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+          </Link>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
-        <Stat label="Savings rate" value={kept === null ? '–' : kept + '%'} sub={income ? peso(Math.max(0, income - spent)) + ' kept of ' + peso(income) + ' in' : 'No income logged this month'} pct={kept === null ? null : Math.max(0, kept) / 100} color="var(--under)" />
+        <Stat href="/money-in" label="Savings rate" value={kept === null ? '–' : kept + '%'} sub={income ? peso(Math.max(0, income - spent)) + ' kept of ' + peso(income) + ' in' : 'Nothing came in yet this month'} pct={kept === null ? null : Math.max(0, kept) / 100} color="var(--under)" />
         <Stat label="Invested" value={total ? Math.round((invested / total) * 100) + '%' : '–'} sub={peso(invested) + ' in IBKR'} pct={total ? invested / total : null} color="#F0974F" />
         <Stat label={MONTH_NAMES[now.m - 1] + ' pace'} value={peso(pace)} valueColor={pace > budget ? 'var(--over)' : undefined} sub={pace > budget ? peso(pace - budget) + ' over the ' + peso(budget) + ' budget' : peso(budget - pace) + ' under the ' + peso(budget) + ' budget'} pct={budget ? Math.min(1, pace / Math.max(pace, budget)) : null} mark={budget && pace > budget ? budget / pace : null} color={pace > budget ? 'var(--over)' : 'var(--under)'} />
         <Stat label="For goals" value={peso(forGoals)} sub="Set aside in Maya" pct={cash ? Math.min(1, forGoals / cash) : null} color="#C38BFF" />
@@ -146,10 +131,11 @@ export default function NetWorth() {
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // One small metric: label, value, an optional bar (with a tick where a limit sits), and a line under it.
-function Stat({ label, value, sub, pct, color, mark, valueColor }) {
+function Stat({ label, value, sub, pct, color, mark, valueColor, href }) {
+  const Box = href ? Link : 'div';
   return (
-    <div className="glass card" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div className="small muted">{label}</div>
+    <Box href={href} className={'glass card' + (href ? ' press' : '')} style={{ display: 'flex', flexDirection: 'column', gap: 4, textDecoration: 'none' }}>
+      <div className="small muted" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>{label}{href && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: valueColor }}>{value}</div>
       {pct !== null && pct !== undefined && (
         <div aria-hidden="true" style={{ position: 'relative', height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.12)' }}>
@@ -158,6 +144,6 @@ function Stat({ label, value, sub, pct, color, mark, valueColor }) {
         </div>
       )}
       <div style={{ fontSize: 12, color: 'var(--muted)' }}>{sub}</div>
-    </div>
+    </Box>
   );
 }

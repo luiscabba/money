@@ -282,6 +282,10 @@ export async function handleMessage(m) {
     tx.merchant = 'Own account (' + own + ')';
     if (tx.type === 'Expense') tx.type = 'Transfer Out';
   }
+  // Money "from Maya" itself is Maya's cashback, which also arrives as its own text: one row, as cashback.
+  if (own === 'Maya' && /Income|Transfer In/.test(tx.type)) {
+    Object.assign(tx, { type: 'Refund', merchant: 'Maya cashback', source: 'Maya Wallet', category: '' });
+  }
   // QR Ph payments look like transfers but are almost always a shop: count as spending, ask to confirm.
   if (!own && tx.type === 'Transfer Out' && /QR ?Ph|QRPH|scan(ned)? to pay|via QR/i.test(text)) {
     tx.type = 'Expense';
