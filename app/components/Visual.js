@@ -49,6 +49,8 @@ function Columns({ v }) {
 function Table({ v }) {
   const cols = v.columns || [];
   const rows = (v.rows || []).slice(0, 30);
+  let main = cols.findIndex((c, k) => k > 0 && /total|spent|amount|sum/i.test(c));
+  if (main < 0) main = cols.length - 1;
   return (
     <figure className="rise" style={{ ...card, margin: 0, gap: 4, padding: '12px 14px' }}>
       <Title t={v.title} />
@@ -60,7 +62,7 @@ function Table({ v }) {
               <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                 {r.map((c, k) => k === 0
                   ? <th key={k} scope="row" style={{ textAlign: 'left', padding: '10px 0', fontWeight: 700 }}>{c}</th>
-                  : <td key={k} style={{ textAlign: 'right', padding: '10px 0 10px 10px', whiteSpace: 'nowrap', fontWeight: k === cols.length - 1 || k === 2 ? 800 : 500, color: i === v.hotRow && k > 0 ? 'var(--over)' : undefined }}>{c}</td>)}
+                  : <td key={k} style={{ textAlign: 'right', padding: '10px 0 10px 10px', whiteSpace: 'nowrap', fontWeight: k === main ? 800 : 500, color: i === v.hotRow && k === main ? 'var(--over)' : k === main ? undefined : 'var(--muted)' }}>{c}</td>)}
               </tr>
             ))}
             {v.total && v.total.length > 0 && (
@@ -78,7 +80,7 @@ function Table({ v }) {
 function WhatIf({ v }) {
   const min = num(v.min), max = num(v.max) > min ? num(v.max) : min + 10, step = num(v.step) || 1;
   const current = Math.min(max, Math.max(min, num(v.current)));
-  const [n, setN] = useState(current);
+  const [n, setN] = useState(Math.max(min, current - step)); // one step in, so the payoff shows straight away
   const kept = Math.round((current - n) * num(v.perUnit));
   const g = v.goal && num(v.goal.price) > 0 ? v.goal : null;
   let eta = '', sooner = 0, pct = 0;
