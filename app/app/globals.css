@@ -63,6 +63,7 @@ a { color: inherit; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .ringfill { animation: ringfill 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .ringburst { transform-box: fill-box; transform-origin: center; animation: ringburst 0.9s ease-out 0.9s both; }
+svg[role="img"], svg[aria-hidden="true"] { overflow: visible; }
 .rise { animation: rise 0.35s ease both; }
 @media (prefers-reduced-motion: reduce) { .ringfill, .ringburst, .rise { animation: none; } .ringburst { opacity: 0; } }
 
