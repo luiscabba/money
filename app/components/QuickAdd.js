@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sheet, CATS, WALLETS } from './TxSheet';
 import { change } from './apply';
+import useData from './useData';
+import { sourceAccount } from '../lib/core';
 import { peso } from '../lib/money';
 
 // Shrinks a photo so it uploads quickly: longest side 1600px, JPEG (receipts need a little more detail than chat photos).
@@ -30,7 +32,8 @@ export default function QuickAdd() {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [cat, setCat] = useState('Food & Drinks');
-  const [wallet, setWallet] = useState('Cash');
+  const [wallet, setWallet] = useState(''); // picked every time, so a payment never lands on the wrong account
+  const { data } = useData();
   const [what, setWhat] = useState('');
   const [when, setWhen] = useState(''); // '' = now
   const [picking, setPicking] = useState(false);
@@ -41,7 +44,7 @@ export default function QuickAdd() {
   const cam = useRef(null);
   const lib = useRef(null);
   useEffect(() => {
-    const on = () => { setOpen(true); setAmount(''); setWhat(''); setWhen(''); setPicking(false); setScan(null); setSplit(true); setTimeout(() => input.current && input.current.focus(), 350); };
+    const on = () => { setOpen(true); setWallet(''); setAmount(''); setWhat(''); setWhen(''); setPicking(false); setScan(null); setSplit(true); setTimeout(() => input.current && input.current.focus(), 350); };
     window.addEventListener('money:add', on);
     return () => window.removeEventListener('money:add', on);
   }, []);
@@ -67,16 +70,20 @@ export default function QuickAdd() {
   const parts = r && r.parts.length > 1 && split && Math.abs(r.total - amt) < 0.01 ? r.parts : null;
   const save = async (e) => {
     e.preventDefault();
-    if (!(amt > 0)) return;
+    if (!(amt > 0) || !wallet) return;
     setBusy(true);
     const date = (when || nowLocal()).replace('T', ' ');
     const op = { op: 'add_expense', date, amount: amt, merchant: what.trim() || cat, category: parts ? parts[0].category : cat, source: wallet };
     if (parts) op.parts = parts.map((p) => ({ amount: p.amount, category: p.category }));
     if (r) op.note = 'receipt';
-    const res = await change([op], peso(amt) + ' · ' + (what.trim() || cat) + ' logged');
+    const res = await change([op], peso(amt) + ' · ' + (what.trim() || cat) + ' · ' + wallet + (after ? ' · ' + after.name + ' now ' + exact(Math.round(after.next * 100) / 100) : ''));
     setBusy(false);
     if (res.ok) setOpen(false);
   };
+  // The account this payment comes out of, with its balance before and after.
+  const acctName = sourceAccount(wallet);
+  const acct = acctName && data && data.netWorth ? (data.netWorth.accounts || []).find((a) => a.name === acctName) : null;
+  const after = acct && amt > 0 ? { name: acctName, now: acct.php, next: acct.php - amt } : null;
   const tile = (primary) => ({ display: 'flex', alignItems: 'center', gap: 10, minHeight: 56, padding: '0 14px', borderRadius: 18, cursor: 'pointer', fontWeight: 800, fontSize: 14, border: primary ? 0 : '1px solid var(--line)', background: primary ? 'var(--ink)' : 'var(--glass)', color: primary ? 'var(--bg)' : 'var(--ink)' });
 
   return (
@@ -123,13 +130,17 @@ export default function QuickAdd() {
           </div>
         )}
         {!parts && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{CATS.map((c) => <button type="button" key={c} className={'chip' + (cat === c ? ' on' : '')} onClick={() => setCat(c)}>{c}</button>)}</div>}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{WALLETS.map((w) => <button type="button" key={w} className={'chip' + (wallet === w ? ' on' : '')} onClick={() => setWallet(w)}>{w}</button>)}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <b style={{ fontSize: 14, color: wallet ? 'var(--ink)' : 'var(--over)' }}>{wallet ? 'Paid with' : 'Paid with?'}</b>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{WALLETS.map((w) => <button type="button" key={w} className={'chip' + (wallet === w ? ' on' : '')} onClick={() => setWallet(w)}>{w}</button>)}</div>
+          {after && <span className="small" style={{ color: after.next < 0 ? 'var(--over)' : 'var(--muted)' }}>{after.name} {exact(Math.round(after.now * 100) / 100)} → {after.next < 0 ? '−' + exact(Math.round(-after.next * 100) / 100) : exact(Math.round(after.next * 100) / 100)}{after.next < 0 ? ". That's more than the app thinks is in " + after.name + '. Set its balance after.' : ''}</span>}
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           <button type="button" className="chip" aria-expanded={picking} onClick={() => setPicking((x) => !x)}>{when ? whenLabel(when) : 'Now'} ▾</button>
           {picking && <input type="datetime-local" aria-label="When" className="input" style={{ minHeight: 44, fontSize: 16, flex: 1, minWidth: 200 }} value={when || nowLocal()} max={nowLocal()} onChange={(e) => setWhen(e.target.value)} />}
         </div>
-        <button className="btn" disabled={busy || !(amt > 0) || (scan && scan.reading)} type="submit">{busy ? 'Saving…' : amt > 0 ? 'Add ' + exact(amt) : 'Add'}</button>
-        {wallet !== 'Cash' && <span className="small muted">When the {wallet.split(' ')[0]} text arrives, it fills in this row instead of adding another.</span>}
+        <button className="btn" disabled={busy || !(amt > 0) || !wallet || (scan && scan.reading)} type="submit">{busy ? 'Saving…' : amt > 0 ? 'Add ' + exact(amt) : 'Add'}</button>
+        {wallet && wallet !== 'Cash' && <span className="small muted">When the {wallet.split(' ')[0]} text arrives, it fills in this row instead of adding another.</span>}
       </form>
     </Sheet>
   );

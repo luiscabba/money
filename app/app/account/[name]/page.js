@@ -117,7 +117,7 @@ export default function Account({ params }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 2px 0' }}>
         <span className="small muted">{SUB[name] || 'Balance'}</span>
         <span className="big">{acct ? (isUsd ? usd(acct.balance) : peso(acct.php)) : '–'}</span>
-        {acct && total > 0 && <span className="small muted">{(acct.php / total) * 100 < 1 ? 'Under 1%' : Math.round((acct.php / total) * 100) + '%'} of everything{acct.asOf ? ' · checked ' + new Date(acct.asOf + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>}
+        {acct && total > 0 && <span className="small muted">{(acct.php / total) * 100 < 1 ? 'Under 1%' : Math.round((acct.php / total) * 100) + '%'} of everything{acct.asOf ? ' · checked ' + new Date(acct.asOf + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + (acct.sinceRows ? ' + ' + acct.sinceRows + (acct.sinceRows === 1 ? ' payment' : ' payments') + ' since' : '') : ''}</span>}
       </div>
 
       {setting && (

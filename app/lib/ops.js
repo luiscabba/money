@@ -109,8 +109,9 @@ async function one(o, ctx = {}) {
   if (op === 'add_expense') {
     const amt = Number(o.amount);
     if (!(amt > 0) || CATEGORIES.indexOf(o.category) < 0) throw 'bad amount or category';
+    if (!String(o.source || '').trim()) throw 'say which account it came out of';
     const closed = [];
-    const n = await addTx({ review: false, date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '', closed });
+    const n = await addTx({ review: false, date: when(o.date) || new Date(), type: 'Expense', amount: amt, merchant: String(o.merchant || 'Cash').slice(0, 60), category: o.category, source: String(o.source).trim().slice(0, 30), ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '', closed });
     // A purchase that looks like a funded goal's gets the same "pay it from the goal?" card as a wallet text.
     const g = await matchGoal({ type: 'Expense', amount: amt }).catch(() => null);
     if (g) await addMatch(n, g.id).catch(() => null);
@@ -272,8 +273,9 @@ async function one(o, ctx = {}) {
     const TYPES = ['Income', 'Transfer In', 'Transfer Out', 'Refund', 'Cash Withdrawal'];
     const amt = Number(o.amount);
     if (TYPES.indexOf(o.type) < 0 || !(amt > 0)) throw 'need a type and amount';
+    if (!String(o.source || '').trim()) throw 'say which account it went into or out of';
     const category = /^Transfer/.test(o.type) ? 'Transfer' : o.type === 'Refund' && CATEGORIES.indexOf(o.category) >= 0 ? o.category : '';
-    const n = await addTx({ review: false, date: when(o.date) || new Date(), type: o.type, amount: amt, merchant: String(o.merchant || o.type).slice(0, 60), category, source: o.source || 'Cash', ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
+    const n = await addTx({ review: false, date: when(o.date) || new Date(), type: o.type, amount: amt, merchant: String(o.merchant || o.type).slice(0, 60), category, source: String(o.source).trim().slice(0, 30), ref: 'ask-' + newId(), note: o.note ? String(o.note).slice(0, 120) : '' });
     return [voidUndo(n)];
   }
   if (op === 'edit_owed') {

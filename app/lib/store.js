@@ -1,6 +1,6 @@
 // Reads the database into the same shape the Apps Script's doGet used to return, so the screens don't change.
 import { select, insert, update, remove, eq, inList } from './db';
-import { CATEGORIES, manila, manilaDay, round2 } from './core';
+import { CATEGORIES, ACCOUNTS, manila, manilaDay, round2, sourceAccount } from './core';
 import { goalPlan } from './goals';
 
 export async function names() {
@@ -61,14 +61,48 @@ export async function setSetting(key, value) {
   await insert('settings', [{ key, value, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
 }
 
+// What an account's money did through tracked rows after a moment. Void rows count for nothing.
+export function rowEffect(type, amount) {
+  const amt = Number(amount) || 0;
+  if (/^(Income|Transfer In|Refund)$/.test(type)) return amt;
+  if (/^(Expense|Transfer Out|Cash Withdrawal)$/.test(type)) return -amt;
+  return 0;
+}
+
+// accounts.balance is the last balance read or set (the anchor). The live balance is that anchor plus every
+// tracked row on the account since, so a logged, edited, voided or undone row moves the balance straight away.
+export async function liveBalances(accts) {
+  const tracked = accts.filter((a) => ACCOUNTS.indexOf(a.name) >= 0 && a.as_of);
+  if (!tracked.length) return {};
+  const from = tracked.reduce((m, a) => (a.as_of < m ? a.as_of : m), tracked[0].as_of);
+  const rows = await select('transactions', 'select=ts,type,amount,source&type=neq.Void&ts=gt.' + encodeURIComponent(new Date(from).toISOString()));
+  const out = {};
+  tracked.forEach((a) => {
+    const at = new Date(a.as_of).getTime();
+    let flow = 0, since = 0;
+    rows.forEach((r) => {
+      if (sourceAccount(r.source) !== a.name || new Date(r.ts).getTime() <= at) return;
+      const e = rowEffect(r.type, r.amount);
+      if (e) { flow += e; since++; }
+    });
+    out[a.name] = { balance: round2((Number(a.balance) || 0) + flow), flow: round2(flow), since };
+  });
+  return out;
+}
+
 export async function netWorth() {
   const [fxRaw, accts, hist] = await Promise.all([setting('usd_php'), select('accounts', 'select=*&order=sort'), select('networth_history', 'select=date,total_php&order=date')]);
   const fx = Number(fxRaw) || null;
+  const live = await liveBalances(accts);
   return {
     usdphp: fx,
     accounts: accts.map((a) => {
-      const bal = Number(a.balance) || 0;
-      return { name: a.name, currency: a.currency, balance: bal, php: round2(a.currency === 'USD' ? bal * (fx || 0) : bal), asOf: a.as_of ? manilaDay(a.as_of) : '' };
+      const l = live[a.name];
+      const bal = l ? l.balance : Number(a.balance) || 0;
+      return {
+        name: a.name, currency: a.currency, balance: bal, php: round2(a.currency === 'USD' ? bal * (fx || 0) : bal), asOf: a.as_of ? manilaDay(a.as_of) : '',
+        anchor: Number(a.balance) || 0, sinceRows: l ? l.since : 0
+      };
     }),
     history: hist.map((h) => ({ date: h.date, total: Number(h.total_php) || 0 }))
   };
