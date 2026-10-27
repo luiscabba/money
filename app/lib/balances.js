@@ -19,13 +19,19 @@ async function trackedFlow(account, from, to) {
 }
 
 // Maya's notification shows the wallet only, so Maya's net worth moves by the change; the others are the whole account.
-async function updateNetWorth(account, balance, prevBalance, when) {
+// A total Luis told Moni since the last real reading already moved the anchor past that point, so the tracked
+// flow in between isn't added again on top of it.
+async function updateNetWorth(account, balance, prev, when) {
   const a = await select('accounts', eq('name', account));
   if (!a[0]) return;
   let next = balance;
   if (account === 'Maya') {
-    if (prevBalance === null) return;
-    next = round2(Number(a[0].balance) + balance - prevBalance);
+    if (!prev) return;
+    const prevAt = new Date(prev.at);
+    let delta = balance - Number(prev.balance);
+    const anchoredAt = a[0].as_of ? new Date(a[0].as_of) : null;
+    if (anchoredAt && anchoredAt > prevAt) delta -= await trackedFlow(account, prevAt, anchoredAt);
+    next = round2(Number(a[0].balance) + delta);
   }
   await update('accounts', eq('name', account), { balance: next, as_of: when.toISOString() });
 }
@@ -41,7 +47,7 @@ export async function recordBalance(account, balance, when, note, opts = {}) {
   if (opts.out && saved) opts.out.id = saved.id;
   // A reading older than the last one (notifications handled out of order) is kept but changes nothing.
   if (prev && when.getTime() <= new Date(prev.at).getTime()) return null;
-  await updateNetWorth(account, balance, prev ? Number(prev.balance) : null, when);
+  await updateNetWorth(account, balance, prev, when);
   if (!prev || opts.noGap) return null;
   const from = new Date(prev.at);
   const expected = Number(prev.balance) + (await trackedFlow(account, from, when));
