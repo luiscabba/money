@@ -7,10 +7,8 @@ import CountUp from '../../components/CountUp';
 import Seg from '../../components/Seg';
 import WorthSwitch from '../../components/WorthSwitch';
 import Link from 'next/link';
-import { earnedIn } from '../../lib/flow';
+import { earnedIn, colorOf } from '../../lib/flow';
 import { peso, usd, manilaNow, pad, netExpenses, appWallets, daysIn, totalBudget } from '../../lib/money';
-
-const COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA', 'App wallets': '#FFD166' };
 
 export default function NetWorth() {
   const { data, error } = useData();
@@ -19,10 +17,8 @@ export default function NetWorth() {
   const [span, setSpan] = useState('30');
   if (!data) return <Shell glow="a"><Loading error={error} /></Shell>;
 
-  const wallets = appWallets(data);
-  const walletTotal = wallets.reduce((a, w) => a + w.php, 0);
   const acc = (data.netWorth.accounts || []).filter((a) => a.php > 0)
-    .concat(walletTotal > 0 ? [{ name: 'App wallets', currency: 'PHP', balance: walletTotal, php: walletTotal, wallets }] : []);
+    .concat(appWallets(data).filter((w) => w.php > 0).map((w) => ({ name: w.name, currency: 'PHP', balance: w.php, php: w.php, asOf: w.asOf })));
   const total = acc.reduce((a, x) => a + x.php, 0);
   const cash = acc.filter((a) => a.name !== 'IBKR').reduce((a, x) => a + x.php, 0);
   const prefix = now.y + '-' + pad(now.m) + '-';
@@ -60,7 +56,7 @@ export default function NetWorth() {
   const segs = acc.map((a, i) => {
     const len = (C * a.php) / total;
     const vis = Math.max(len - 3, 1.5);
-    const s = { color: COLORS[a.name] || '#8A93A6', dash: vis + ' ' + (C - vis), off: -start, op: sel === -1 || sel === i ? 1 : 0.25 };
+    const s = { color: colorOf(a.name), dash: vis + ' ' + (C - vis), off: -start, op: sel === -1 || sel === i ? 1 : 0.25 };
     start += len;
     return s;
   });
@@ -108,7 +104,7 @@ export default function NetWorth() {
         {acc.map((a) => (
           <Link key={a.name} href={a.name === 'IBKR' ? '/invest' : '/account/' + encodeURIComponent(a.name)} className="press"
             style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 46, padding: '0 8px 0 12px', borderRadius: 16, fontSize: 15, fontWeight: 700, textDecoration: 'none' }}>
-            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 5, background: COLORS[a.name] || '#8A93A6' }} />
+            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 5, background: colorOf(a.name) }} />
             <span style={{ flex: 1, textAlign: 'left' }}>{a.name}</span>
             <span className="muted" style={{ fontWeight: 500 }}>{(a.php / total) * 100 < 1 ? '<1' : Math.round((a.php / total) * 100)}%</span>
             <span style={{ minWidth: 86, textAlign: 'right' }}>{peso(a.php)}</span>

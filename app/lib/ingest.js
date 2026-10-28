@@ -171,8 +171,10 @@ export async function categorizeMerchant(merchant, text) {
   return 'Other';
 }
 
-function ownAccount(merchant, text) {
+function ownAccount(merchant, text, bank) {
   const m = (merchant + ' ' + text).match(/ending in (\d{3,4})/i);
+  // 4003 ends Luis's mobile number, which is his GCash as well as his Maya: Maya sending to it is sending to GCash.
+  if (m && m[1] === '4003' && bank === 'Maya') return 'GCash';
   if (m && OWN_ACCOUNTS[m[1]]) return OWN_ACCOUNTS[m[1]] + ' ' + m[1];
   if (OWN_NAMES.test(merchant)) return 'self';
   if (/g-?xchange|gcash/i.test(merchant)) return 'GCash';
@@ -277,7 +279,7 @@ export async function handleMessage(m) {
 
   tx.date = when;
   tx.merchant = cleanMerchant(tx.merchant || '');
-  const own = ownAccount(tx.merchant, text);
+  const own = ownAccount(tx.merchant, text, bank);
   if (own) {
     tx.merchant = 'Own account (' + own + ')';
     if (tx.type === 'Expense') tx.type = 'Transfer Out';

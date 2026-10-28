@@ -1,7 +1,7 @@
 // Applies confirmed changes from the app and Moni. Each op is checked before it touches the database,
 // and returns what undoing it needs. Ported from the Apps Script's applyOps_.
 import { select, insert, update, remove, eq } from './db';
-import { CATEGORIES, ACCOUNTS, newId, parseWhen } from './core';
+import { CATEGORIES, ACCOUNTS, newId, parseWhen, isAppWallet, walletKey } from './core';
 import { addRule } from './store';
 import { recordBalance } from './balances';
 import { matchGoal, addMatch } from './goalJobs';
@@ -157,6 +157,16 @@ async function one(o, ctx = {}) {
     if (!p[0]) throw 'unknown plan';
     await update('plans', eq('id', o.id), { status: 'removed' });
     return [restoreOf('plans', p[0])];
+  }
+  if (op === 'set_balance' && isAppWallet(o.account)) {
+    // An app wallet has no account row: its set balance is kept with the others in settings.
+    if (!(Number(o.amount) >= 0)) throw 'need account and amount';
+    const before = await select('settings', eq('key', 'wallet_anchors'));
+    const list = before[0] && before[0].value && typeof before[0].value === 'object' ? before[0].value : {};
+    const name = String(o.account).trim().replace(/\s+/g, ' ').slice(0, 40);
+    const next = { ...list, [walletKey(name)]: { name, balance: Math.round(Number(o.amount) * 100) / 100, as_of: new Date().toISOString() } };
+    await insert('settings', [{ key: 'wallet_anchors', value: next, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
+    return [{ op: 'restore', table: 'settings', key: 'wallet_anchors', values: { value: list } }];
   }
   if (op === 'set_balance') {
     if (ACCOUNTS.indexOf(o.account) < 0 || !(Number(o.amount) >= 0)) throw 'need account and amount';
@@ -466,7 +476,8 @@ async function one(o, ctx = {}) {
     if (!o.row) {
       const a = Number(o.amount);
       if (!(a > 0)) throw 'need the purchase or an amount';
-      made = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: a, merchant: String(o.merchant || g.name).slice(0, 60), category: CATEGORIES.indexOf(o.category) >= 0 ? o.category : 'Shopping', source: o.source || 'Cash', ref: 'ask-' + newId() });
+      if (!String(o.source || '').trim()) throw 'say which account it came out of';
+      made = await addTx({ date: when(o.date) || new Date(), type: 'Expense', amount: a, merchant: String(o.merchant || g.name).slice(0, 60), category: CATEGORIES.indexOf(o.category) >= 0 ? o.category : 'Shopping', source: String(o.source).trim().slice(0, 30), ref: 'ask-' + newId() });
     }
     const t = await getTx(made || o.row);
     if (t.type !== 'Expense' || t.goal_id) throw 'not a purchase';
@@ -530,7 +541,7 @@ async function one(o, ctx = {}) {
   }
   if (op === 'restore') {
     // Undo: puts back values captured before a change. Only the app's own tables and columns.
-    if (o.table === 'settings' && !['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden', 'calendar_dismissed'].includes(o.key)) throw 'not allowed';
+    if (o.table === 'settings' && !['goal_floor', 'goal_sweep_pending', 'goal_matches', 'bills_hidden', 'calendar_dismissed', 'wallet_anchors'].includes(o.key)) throw 'not allowed';
     const spec = RESTORE[o.table];
     if (!spec || o.key === undefined || o.key === null || !o.values) throw 'not allowed';
     const patch = pick(o.values, spec[1].filter((c) => c in o.values));

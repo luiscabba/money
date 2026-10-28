@@ -1,6 +1,6 @@
 // Reads the database into the same shape the Apps Script's doGet used to return, so the screens don't change.
 import { select, insert, update, remove, eq, inList } from './db';
-import { CATEGORIES, ACCOUNTS, manila, manilaDay, round2, sourceAccount } from './core';
+import { CATEGORIES, ACCOUNTS, manila, manilaDay, round2, rowEffects, markPairs, isAppWallet, walletKey } from './core';
 import { goalPlan } from './goals';
 
 export async function names() {
@@ -61,28 +61,25 @@ export async function setSetting(key, value) {
   await insert('settings', [{ key, value, updated_at: new Date().toISOString() }], { upsert: true, onConflict: 'key' });
 }
 
-// What an account's money did through tracked rows after a moment. Void rows count for nothing.
-export function rowEffect(type, amount) {
-  const amt = Number(amount) || 0;
-  if (/^(Income|Transfer In|Refund)$/.test(type)) return amt;
-  if (/^(Expense|Transfer Out|Cash Withdrawal)$/.test(type)) return -amt;
-  return 0;
-}
+// A Maya Savings move is inside Maya, so for the account's total it counts as Maya.
+const totalOf = (acct) => (acct === 'Maya Savings' ? 'Maya' : acct);
+const PAIR_MS = 2 * 86400000;
 
 // accounts.balance is the last balance read or set (the anchor). The live balance is that anchor plus every
-// tracked row on the account since, so a logged, edited, voided or undone row moves the balance straight away.
+// tracked row since, both sides of a move included, so a logged, edited, voided or undone row moves it straight away.
 export async function liveBalances(accts) {
   const tracked = accts.filter((a) => ACCOUNTS.indexOf(a.name) >= 0 && a.as_of);
   if (!tracked.length) return {};
   const from = tracked.reduce((m, a) => (a.as_of < m ? a.as_of : m), tracked[0].as_of);
-  const rows = await select('transactions', 'select=ts,type,amount,source&type=neq.Void&ts=gt.' + encodeURIComponent(new Date(from).toISOString()));
+  // A little earlier than the oldest anchor, so a move's other half logged just before it can still pair up.
+  const rows = markPairs(await select('transactions', 'select=ts,type,amount,source,merchant&type=neq.Void&ts=gt.' + encodeURIComponent(new Date(new Date(from).getTime() - PAIR_MS).toISOString())));
   const out = {};
   tracked.forEach((a) => {
     const at = new Date(a.as_of).getTime();
     let flow = 0, since = 0;
     rows.forEach((r) => {
-      if (sourceAccount(r.source) !== a.name || new Date(r.ts).getTime() <= at) return;
-      const e = rowEffect(r.type, r.amount);
+      if (new Date(r.ts).getTime() <= at) return;
+      const e = rowEffects(r).reduce((s, [acct, v]) => s + (totalOf(acct) === a.name ? v : 0), 0);
       if (e) { flow += e; since++; }
     });
     out[a.name] = { balance: round2((Number(a.balance) || 0) + flow), flow: round2(flow), since };
@@ -90,8 +87,35 @@ export async function liveBalances(accts) {
   return out;
 }
 
+// App wallets have no account row: each balance is every top-up minus every payment from it, over all time,
+// or from the balance Luis last set for it. Names match whatever their capitalisation.
+export async function walletBalances() {
+  const [rows, anchorsRaw] = await Promise.all([
+    select('transactions', 'select=ts,type,amount,source,merchant&type=neq.Void&or=(merchant.ilike.*wallet,source.ilike.*wallet)&order=ts'),
+    setting('wallet_anchors')
+  ]);
+  const anchors = anchorsRaw && typeof anchorsRaw === 'object' ? anchorsRaw : {};
+  const out = {};
+  const at = (key) => (anchors[key] && anchors[key].as_of ? new Date(anchors[key].as_of).getTime() : 0);
+  Object.keys(anchors).forEach((key) => {
+    out[key] = { name: anchors[key].name, php: Number(anchors[key].balance) || 0, asOf: manilaDay(anchors[key].as_of), sinceRows: 0, anchored: true };
+  });
+  rows.forEach((r) => {
+    rowEffects(r).forEach(([acct, v]) => {
+      if (!isAppWallet(acct)) return;
+      const key = walletKey(acct);
+      if (new Date(r.ts).getTime() <= at(key)) return;
+      const w = (out[key] = out[key] || { name: acct, php: 0, asOf: '', sinceRows: 0, anchored: false });
+      w.php = round2(w.php + v);
+      w.sinceRows++;
+      if (!w.anchored) w.name = acct;
+    });
+  });
+  return Object.values(out).sort((a, b) => b.php - a.php);
+}
+
 export async function netWorth() {
-  const [fxRaw, accts, hist] = await Promise.all([setting('usd_php'), select('accounts', 'select=*&order=sort'), select('networth_history', 'select=date,total_php&order=date')]);
+  const [fxRaw, accts, hist, wallets] = await Promise.all([setting('usd_php'), select('accounts', 'select=*&order=sort'), select('networth_history', 'select=date,total_php&order=date'), walletBalances()]);
   const fx = Number(fxRaw) || null;
   const live = await liveBalances(accts);
   return {
@@ -104,6 +128,7 @@ export async function netWorth() {
         anchor: Number(a.balance) || 0, sinceRows: l ? l.since : 0
       };
     }),
+    wallets,
     history: hist.map((h) => ({ date: h.date, total: Number(h.total_php) || 0 }))
   };
 }

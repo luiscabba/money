@@ -1,7 +1,8 @@
 // Money moving through each account: which account a row belongs to, and what kind of money in or out it is.
 // Safe on the phone and the server.
 
-export const ACCOUNT_COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA', 'App wallets': '#FFD166' };
+export const ACCOUNT_COLORS = { Maya: '#4D7CFF', IBKR: '#FF8A3D', BPI: '#3DDC97', GoTyme: '#C38BFF', GCash: '#A3ABBA', Cash: '#5ECFD1', 'App wallets': '#FFD166' };
+export const colorOf = (name) => ACCOUNT_COLORS[name] || (/\bwallet$/i.test(name || '') ? ACCOUNT_COLORS['App wallets'] : '#8A93A6');
 
 // Maya Wallet, Maya Card, Maya Savings and receipts paid with Maya are all the Maya account.
 export function accountOf(source) {
@@ -15,8 +16,8 @@ export function accountOf(source) {
   return s;
 }
 
-// Moving your own money: between your accounts, or topping up an app wallet. Never income or spending.
-export const isOwnMove = (t) => /^Own account/i.test(t.merchant || '') || (/^Transfer/.test(t.type) && /wallet$/i.test(t.merchant || ''));
+// Moving your own money: between your accounts, topping up an app wallet, or taking cash out. Never income or spending.
+export const isOwnMove = (t) => t.type === 'Cash Withdrawal' || /^Own account/i.test(t.raw || t.merchant || '') || (/^Transfer/.test(t.type) && /wallet$/i.test(t.raw || t.merchant || ''));
 
 // in: real money in (income, money from people, refunds and cashback); out: spending and money sent;
 // move: your own money changing places; null: not money (voided rows).
@@ -28,6 +29,7 @@ export function direction(t) {
 }
 
 export function kindLabel(t) {
+  if (t.type === 'Cash Withdrawal') return 'Cash out';
   if (isOwnMove(t)) return 'Between your accounts';
   if (t.type === 'Income') return 'Income';
   if (t.type === 'Transfer In') return 'Sent to you';

@@ -39,7 +39,9 @@ async function dailyClose() {
   if (nw.accounts.some((a) => a.balance) && !fxMissing) {
     const accounts = {};
     nw.accounts.forEach((a) => { accounts[a.currency === 'USD' ? a.name + ' (PHP)' : a.name] = round2(a.php); });
-    await insert('networth_history', [{ date: manilaDay(), accounts, total_php: round2(nw.accounts.reduce((s, a) => s + a.php, 0)), usd_php: nw.usdphp }], { upsert: true, onConflict: 'date' });
+    (nw.wallets || []).forEach((w) => { accounts[w.name] = round2(w.php); });
+    const total = nw.accounts.reduce((s, a) => s + a.php, 0) + (nw.wallets || []).reduce((s, w) => s + w.php, 0);
+    await insert('networth_history', [{ date: manilaDay(), accounts, total_php: round2(total), usd_php: nw.usdphp }], { upsert: true, onConflict: 'date' });
   }
   return { spent, streak, sweep };
 }

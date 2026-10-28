@@ -1,4 +1,6 @@
 // Pure calculations shared by the screens.
+import { atmFee } from './core';
+
 export const peso = (n) => '₱' + Math.round(n || 0).toLocaleString('en-US');
 export const usd = (n) => '$' + (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -65,6 +67,10 @@ export function netExpenses(data) {
     const last = same.pop();
     if (last) extra.push({ ...r, type: 'Expense', amount: -r.amount, category: last.category, review: false, fromRefund: true });
   });
+  // The cash from an ATM is still Luis's money; only the bank's fee on top of it is spent.
+  all.filter((t) => t.type === 'Cash Withdrawal' && atmFee(t.amount)).forEach((t) => {
+    extra.push({ ...t, type: 'Expense', amount: atmFee(t.amount), merchant: 'ATM fee', category: 'Bills & Phone', review: false, fromFee: true });
+  });
   const out = exp.filter((e) => !cancelled.has(e)).concat(extra).sort((a, b) => (a.date < b.date ? -1 : 1));
   netCache.set(data, out);
   return out;
@@ -118,6 +124,8 @@ export function avgMonthlySpend(data, now) {
 export const isAppWallet = (s) => /\bwallet$/i.test(String(s || '').trim()) && !/^maya\b/i.test(String(s || '').trim());
 
 export function appWallets(data) {
+  // The server works these out over all time and from any balance set for them.
+  if (data.netWorth && Array.isArray(data.netWorth.wallets)) return data.netWorth.wallets.filter((w) => Math.abs(w.php) >= 1 || w.anchored);
   const bal = {};
   (data.transactions || []).forEach((t) => {
     const to = t.raw || t.merchant;

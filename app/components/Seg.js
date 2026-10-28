@@ -4,7 +4,7 @@ export default function Seg({ options, value, onChange, label, minWidth = 64, st
   const i = Math.max(0, options.findIndex(([k]) => k === value));
   const n = options.length;
   return (
-    <div role="group" aria-label={label} className="glass" style={{ position: 'relative', display: 'flex', padding: 3, borderRadius: 22, flex: stretch ? 1 : undefined }}>
+    <div role="group" aria-label={label} className="glass" style={{ position: 'relative', display: 'flex', padding: 3, borderRadius: 22, width: stretch ? '100%' : undefined }}>
       <span className="thumb" aria-hidden="true" style={{ width: `calc((100% - 6px) / ${n})`, transform: `translateX(${i * 100}%)` }} />
       {options.map(([k, l]) => (
         <button key={k} onClick={() => onChange(k)} aria-pressed={k === value}

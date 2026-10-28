@@ -26,7 +26,8 @@ export function detectBills(data, now) {
   const hidden = new Set((data.billsHidden || []).map((h) => h.key));
   const today = new Date(now.y, now.m - 1, now.d, 12);
   const groups = {};
-  netExpenses(data).filter((t) => t.amount > 0).forEach((t) => {
+  // Bank fees sit in Bills & Phone but aren't bills.
+  netExpenses(data).filter((t) => t.amount > 0 && !t.fromFee && !/\bfee\b/i.test(t.merchant || '')).forEach((t) => {
     const key = brandOf(t.merchant);
     (groups[key] = groups[key] || []).push(t);
   });

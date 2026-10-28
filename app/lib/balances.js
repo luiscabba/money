@@ -1,26 +1,29 @@
 // Balances read from notifications and texts, and the missing-money check that compares them with tracked rows.
 import { select, insert, update, eq } from './db';
-import { newId, round2, sourceAccount } from './core';
+import { newId, round2, rowEffects, markPairs } from './core';
 import { push } from './push';
 
 export const GAP_MIN = 150;
+const PAIR_MS = 2 * 86400000;
 
-// Net tracked movement for one account after `from`, up to and including `to`.
+// Net tracked movement for one account after `from`, up to and including `to`, both sides of moves included.
+// 'Maya' here is Maya's wallet; 'Maya Savings' is asked for separately.
 async function trackedFlow(account, from, to) {
-  const rows = await select('transactions', 'select=ts,type,amount,source&ts=gt.' + encodeURIComponent(from.toISOString()) + '&ts=lte.' + encodeURIComponent(to.toISOString()));
+  const iso = (t) => encodeURIComponent(new Date(t).toISOString());
+  const rows = markPairs(await select('transactions', 'select=ts,type,amount,source,merchant&type=neq.Void&ts=gt.' + iso(from.getTime() - PAIR_MS) + '&ts=lte.' + iso(to.getTime() + PAIR_MS)));
   let flow = 0;
   rows.forEach((r) => {
-    if (sourceAccount(r.source) !== account) return;
-    const amt = Number(r.amount) || 0;
-    if (/^(Income|Transfer In|Refund)$/.test(r.type)) flow += amt;
-    else if (/^(Expense|Transfer Out|Cash Withdrawal)$/.test(r.type)) flow -= amt;
+    const t = new Date(r.ts).getTime();
+    if (t <= from.getTime() || t > to.getTime()) return;
+    rowEffects(r).forEach(([acct, v]) => { if (acct === account) flow += v; });
   });
   return flow;
 }
 
 // Maya's notification shows the wallet only, so Maya's net worth moves by the change; the others are the whole account.
 // A total Luis told Moni since the last real reading already moved the anchor past that point, so the tracked
-// flow in between isn't added again on top of it.
+// flow in between isn't added again on top of it. Money moved between savings and wallet changes the wallet
+// reading but not the total, so it's taken back out.
 async function updateNetWorth(account, balance, prev, when) {
   const a = await select('accounts', eq('name', account));
   if (!a[0]) return;
@@ -30,7 +33,9 @@ async function updateNetWorth(account, balance, prev, when) {
     const prevAt = new Date(prev.at);
     let delta = balance - Number(prev.balance);
     const anchoredAt = a[0].as_of ? new Date(a[0].as_of) : null;
-    if (anchoredAt && anchoredAt > prevAt) delta -= await trackedFlow(account, prevAt, anchoredAt);
+    const after = anchoredAt && anchoredAt > prevAt ? anchoredAt : prevAt;
+    if (after > prevAt) delta -= await trackedFlow(account, prevAt, after);
+    delta += await trackedFlow('Maya Savings', after, when);
     next = round2(Number(a[0].balance) + delta);
   }
   await update('accounts', eq('name', account), { balance: next, as_of: when.toISOString() });
